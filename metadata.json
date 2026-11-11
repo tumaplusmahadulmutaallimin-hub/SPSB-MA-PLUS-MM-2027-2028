@@ -1,0 +1,6 @@
+{
+  "name": "Portal Digital Terpadu",
+  "description": "Aplikasi Pusat Akses Layanan Digital Terpadu dengan One QR Code, manajemen ikon layanan, dashboard admin, pendaftaran, pengumuman, dan statistik aktivitas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

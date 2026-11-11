@@ -1,0 +1,158 @@
+{
+  "USERS": [
+    {
+      "id": "fb67df40-44ea-4b1e-af7c-253487507f89",
+      "username": "admin_portal",
+      "email": "admin@portal.local",
+      "fullName": "Administrator Utama",
+      "passwordHash": "70537b2c838c3269a9a1f2a203f223782a2dc1c55d4ff13956b390a2c1a78a4b6b88064fcbc39c01eb23af30dcdd02d8d5d8b98a61628c56c06c8d9c031d2e10",
+      "salt": "d3cd89f46a18f7b6e036c153a0375f6a",
+      "role": "super_admin",
+      "mustChangePassword": true,
+      "isActive": true,
+      "lastLoginAt": null,
+      "createdAt": "2026-11-11T09:45:55.862Z",
+      "updatedAt": "2026-11-11T09:45:55.862Z"
+    }
+  ],
+  "ROLES": [
+    {
+      "id": "role-superadmin",
+      "name": "Super Administrator",
+      "description": "Akses penuh ke seluruh sistem, pengguna, pengaturan, dan database.",
+      "permissions": [
+        "all"
+      ],
+      "createdAt": "2026-11-11T09:45:55.812Z"
+    },
+    {
+      "id": "role-admin",
+      "name": "Administrator",
+      "description": "Mengelola konten portal, ikon layanan, kategori, pengumuman, dan dokumen.",
+      "permissions": [
+        "manage_content",
+        "manage_links",
+        "manage_announcements",
+        "manage_documents",
+        "view_analytics"
+      ],
+      "createdAt": "2026-11-11T09:45:55.812Z"
+    },
+    {
+      "id": "role-operator",
+      "name": "Operator",
+      "description": "Mengelola pengumuman dan melihat statistik.",
+      "permissions": [
+        "manage_announcements",
+        "view_analytics"
+      ],
+      "createdAt": "2026-11-11T09:45:55.812Z"
+    }
+  ],
+  "CATEGORIES": [],
+  "LINKS": [],
+  "REGISTRATIONS": [],
+  "ANNOUNCEMENTS": [],
+  "DOCUMENTS": [],
+  "SITE_SETTINGS": {
+    "portalName": "Portal Digital Terpadu",
+    "institutionName": "Lembaga Pendidikan & Dakwah Terpadu",
+    "tagline": "One QR Code – One Portal – All Digital Services",
+    "description": "Pusat akses resmi seluruh layanan, aplikasi, informasi, dokumen, dan pendaftaran dalam satu pintu akses digital yang mudah dan terpercaya.",
+    "logoUrl": "",
+    "faviconUrl": "",
+    "bannerUrl": "",
+    "primaryColor": "#065f46",
+    "accentColor": "#d97706",
+    "whatsappNumber": "+6281234567890",
+    "email": "kontak@lembaga.sch.id",
+    "address": "Jl. Terusan Pendidikan No. 45, Kompleks Terpadu",
+    "instagramUrl": "https://instagram.com",
+    "facebookUrl": "https://facebook.com",
+    "youtubeUrl": "https://youtube.com",
+    "tiktokUrl": "https://tiktok.com",
+    "websiteUrl": "https://lembaga.sch.id",
+    "copyrightText": "© 2026 Portal Digital Terpadu. Seluruh Hak Cipta Dilindungi.",
+    "heroEnabled": true,
+    "announcementsEnabled": true,
+    "registrationsEnabled": true,
+    "documentsEnabled": true,
+    "searchEnabled": true,
+    "categoriesEnabled": true,
+    "updatedAt": "2026-11-11T09:45:55.812Z"
+  },
+  "QR_SETTINGS": {
+    "portalUrl": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app",
+    "size": 320,
+    "foregroundColor": "#065f46",
+    "backgroundColor": "#ffffff",
+    "includeLogo": true,
+    "logoUrl": "",
+    "errorCorrectionLevel": "H",
+    "posterTitle": "PORTAL DIGITAL TERPADU",
+    "posterSubtitle": "Pindai QR Code untuk Mengakses Seluruh Layanan & Dokumen Resmi",
+    "posterFooter": "Buka kamera smartphone Anda dan arahkan ke kode QR di atas.",
+    "updatedAt": "2026-11-11T09:45:55.812Z"
+  },
+  "VISITORS": [],
+  "LINK_CLICKS": [],
+  "ACTIVITY_LOGS": [
+    {
+      "id": "61a6740e-af7a-4ee8-b780-1292be541572",
+      "timestamp": "2026-11-11T09:46:24.970Z",
+      "userId": "fb67df40-44ea-4b1e-af7c-253487507f89",
+      "username": "admin_portal",
+      "action": "LOGIN_FAILED",
+      "details": "Percobaan login gagal dengan password salah dari IP 127.0.0.1",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "eff15b6e-3254-4cd7-8856-4ff21d5709dc",
+      "timestamp": "2026-11-11T09:45:55.868Z",
+      "userId": "test_runner",
+      "username": "test_runner",
+      "action": "RESTORE_DATABASE",
+      "details": "Database berhasil dipulihkan dari cadangan oleh test_runner",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "21b51fa8-dc19-4d85-8f7d-b1359817f308",
+      "timestamp": "2026-11-11T09:45:55.868Z",
+      "userId": "test_runner",
+      "username": "test_runner",
+      "action": "BACKUP_DATABASE",
+      "details": "Backup database dibuat: DB_PORTAL_DIGITAL_BACKUP_1794390355867.json (4.0 KB)",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "9b26f766-af6f-4983-84a9-16a1853496cf",
+      "timestamp": "2026-11-11T09:45:55.864Z",
+      "userId": "system",
+      "username": "SYSTEM",
+      "action": "INITIALIZE_DATABASE",
+      "details": "Database DB_PORTAL_DIGITAL berhasil diinisialisasi secara otomatis tanpa data dummy.",
+      "ipAddress": "127.0.0.1"
+    }
+  ],
+  "SYSTEM_CONFIG": {
+    "version": "1.0.0",
+    "appName": "Portal Digital Terpadu",
+    "databaseName": "DB_PORTAL_DIGITAL",
+    "installationCompleted": true,
+    "installedAt": "2026-11-11T09:45:55.821Z",
+    "lastBackupAt": "2026-11-11T09:45:55.867Z",
+    "maxLoginAttempts": 5,
+    "sessionTimeoutHours": 8
+  },
+  "BACKUP_LOGS": [
+    {
+      "id": "3148e525-9fae-494c-a2f7-2717d7a25240",
+      "timestamp": "2026-11-11T09:45:55.867Z",
+      "fileName": "DB_PORTAL_DIGITAL_BACKUP_1794390355867.json",
+      "sizeBytes": 4057,
+      "status": "success",
+      "createdBy": "test_runner",
+      "notes": "Unit test backup"
+    }
+  ]
+}

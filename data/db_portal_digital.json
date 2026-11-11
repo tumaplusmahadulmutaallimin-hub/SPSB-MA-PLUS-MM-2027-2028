@@ -1,0 +1,463 @@
+{
+  "USERS": [
+    {
+      "id": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "email": "admin@portal.local",
+      "fullName": "Administrator Utama",
+      "passwordHash": "df5b45591f962b1d91eb7e0c68d3202ab10ef966497d541737fbe81d6e6bb6b1c88c67e5fee3f751e46f0fd2c91daad51adf5c9b04d2e70658e85895e0bb254f",
+      "salt": "0dff5db2e9b01d3a8c9ddd3cc6304735",
+      "role": "super_admin",
+      "mustChangePassword": false,
+      "isActive": true,
+      "lastLoginAt": "2026-11-11T09:55:42.239Z",
+      "createdAt": "2026-11-11T09:55:25.400Z",
+      "updatedAt": "2026-11-11T09:55:56.879Z"
+    }
+  ],
+  "ROLES": [
+    {
+      "id": "role-superadmin",
+      "name": "Super Administrator",
+      "description": "Akses penuh ke seluruh sistem, pengguna, pengaturan, dan database.",
+      "permissions": [
+        "all"
+      ],
+      "createdAt": "2026-11-11T09:55:25.331Z"
+    },
+    {
+      "id": "role-admin",
+      "name": "Administrator",
+      "description": "Mengelola konten portal, ikon layanan, kategori, pengumuman, dan dokumen.",
+      "permissions": [
+        "manage_content",
+        "manage_links",
+        "manage_announcements",
+        "manage_documents",
+        "view_analytics"
+      ],
+      "createdAt": "2026-11-11T09:55:25.331Z"
+    },
+    {
+      "id": "role-operator",
+      "name": "Operator",
+      "description": "Mengelola pengumuman dan melihat statistik.",
+      "permissions": [
+        "manage_announcements",
+        "view_analytics"
+      ],
+      "createdAt": "2026-11-11T09:55:25.331Z"
+    }
+  ],
+  "CATEGORIES": [
+    {
+      "id": "8daca99f-aead-4e41-a1f4-7bd6d6849a0d",
+      "name": "Layanan PPDB & Pendaftaran",
+      "description": "Formulir pendaftaran santri baru dan portal prestasi",
+      "icon": "UserPlus",
+      "order": 1,
+      "isActive": true,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "5a6049cd-068b-40fe-96f2-a14375070b42",
+      "name": "Media Sosial & Penyiaran",
+      "description": "Saluran resmi informasi, kajian, dan kreasi santri",
+      "icon": "Share2",
+      "order": 2,
+      "isActive": true,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "65715c20-273f-4dc5-a7d4-e0eefeae5240",
+      "name": "Informasi & Layanan Kampus",
+      "description": "Website resmi, denah lokasi Google Maps, dan kontak panitia",
+      "icon": "School",
+      "order": 3,
+      "isActive": true,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    }
+  ],
+  "LINKS": [
+    {
+      "id": "fe7c58b4-1eb1-480f-9b42-73d0e1584753",
+      "name": "Formulir Pendaftaran (PPDB)",
+      "categoryId": "8daca99f-aead-4e41-a1f4-7bd6d6849a0d",
+      "description": "Penerimaan Peserta Didik & Santri Baru MA Plus MM",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Cdefs%3E%0A%20%20%20%20%20%20%20%20%3ClinearGradient%20id%3D%22ppdbGrad%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%22100%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20stop-color%3D%22%23065F46%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23047857%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%20%20%20%20%3ClinearGradient%20id%3D%22goldGrad%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%22100%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20stop-color%3D%22%23FDE047%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23CA8A04%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%20%20%20%20%3Cfilter%20id%3D%22shadowPPDB%22%20x%3D%22-10%25%22%20y%3D%22-10%25%22%20width%3D%22120%25%22%20height%3D%22120%25%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3CfeDropShadow%20dx%3D%220%22%20dy%3D%224%22%20stdDeviation%3D%223%22%20flood-opacity%3D%220.25%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%20%20%3C%2Fdefs%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22url(%23ppdbGrad)%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2222%22%20y%3D%2218%22%20width%3D%2256%22%20height%3D%2264%22%20rx%3D%228%22%20fill%3D%22%23FFFFFF%22%20filter%3D%22url(%23shadowPPDB)%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2230%22%20y%3D%2226%22%20width%3D%2228%22%20height%3D%226%22%20rx%3D%223%22%20fill%3D%22%23047857%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2230%22%20y%3D%2238%22%20width%3D%2240%22%20height%3D%224%22%20rx%3D%222%22%20fill%3D%22%23E2E8F0%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2230%22%20y%3D%2246%22%20width%3D%2234%22%20height%3D%224%22%20rx%3D%222%22%20fill%3D%22%23E2E8F0%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2230%22%20y%3D%2254%22%20width%3D%2238%22%20height%3D%224%22%20rx%3D%222%22%20fill%3D%22%23E2E8F0%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2268%22%20cy%3D%2268%22%20r%3D%2214%22%20fill%3D%22url(%23goldGrad)%22%20filter%3D%22url(%23shadowPPDB)%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M63%2068L66.5%2071.5L73%2064.5%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "#ppdb-section",
+      "targetOpen": "_self",
+      "order": 1,
+      "isActive": true,
+      "clicksCount": 14,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "f107447a-ca2d-4460-b83c-7536d8822721",
+      "name": "Instagram Resmi",
+      "categoryId": "5a6049cd-068b-40fe-96f2-a14375070b42",
+      "description": "Dokumentasi kegiatan santri, kajian, dan galeri harian",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Cdefs%3E%0A%20%20%20%20%20%20%20%20%3CradialGradient%20id%3D%22rg%22%20cx%3D%2220%25%22%20cy%3D%22100%25%22%20r%3D%22130%25%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23FFDD55%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%2210%25%22%20stop-color%3D%22%23FFDD55%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%2250%25%22%20stop-color%3D%22%23FF543E%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%2270%25%22%20stop-color%3D%22%23C837AB%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233771C8%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%20%20%3C%2Fdefs%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22url(%23rg)%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2223%22%20y%3D%2223%22%20width%3D%2254%22%20height%3D%2254%22%20rx%3D%2216%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2214%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2266%22%20cy%3D%2234%22%20r%3D%223.5%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "https://instagram.com",
+      "targetOpen": "_blank",
+      "order": 2,
+      "isActive": true,
+      "clicksCount": 42,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "1ccc7033-b20d-41ce-ae88-7bdd6b528296",
+      "name": "YouTube Resmi",
+      "categoryId": "5a6049cd-068b-40fe-96f2-a14375070b42",
+      "description": "Video podcast, ceramah santri, wisuda, dan siaran langsung",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Cdefs%3E%0A%20%20%20%20%20%20%20%20%3ClinearGradient%20id%3D%22ytGrad%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20stop-color%3D%22%23FF0000%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23CC0000%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%20%20%3C%2Fdefs%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22url(%23ytGrad)%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M78%2035.5C77.4%2033%2075.4%2031.1%2073%2030.5C68.6%2029.3%2050%2029.3%2050%2029.3C50%2029.3%2031.4%2029.3%2027%2030.5C24.6%2031.1%2022.6%2033%2022%2035.5C20.8%2040%2020.8%2050%2020.8%2050C20.8%2050%2020.8%2060%2022%2064.5C22.6%2067%2024.6%2068.9%2027%2069.5C31.4%2070.7%2050%2070.7%2050%2070.7C50%2070.7%2068.6%2070.7%2073%2069.5C75.4%2068.9%2077.4%2067%2078%2064.5C79.2%2060%2079.2%2050%2079.2%2050C79.2%2050%2079.2%2040%2078%2035.5Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M43.5%2041.5L59%2050L43.5%2058.5V41.5Z%22%20fill%3D%22%23CC0000%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "https://youtube.com",
+      "targetOpen": "_blank",
+      "order": 3,
+      "isActive": true,
+      "clicksCount": 38,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "352ce662-45bd-4140-8b9c-d5ff4553b5ad",
+      "name": "TikTok Resmi",
+      "categoryId": "5a6049cd-068b-40fe-96f2-a14375070b42",
+      "description": "Video kreatif santri, tips belajar, dan syiar santri muda",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22%23010101%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Cyan%20offset%20note%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M57%2026V49.5C54.8%2048.2%2052.3%2047.5%2049.5%2047.5C41.8%2047.5%2035.5%2053.8%2035.5%2061.5C35.5%2069.2%2041.8%2075.5%2049.5%2075.5C57.2%2075.5%2063.5%2069.2%2063.5%2061.5V39.2C67.8%2042.3%2073.2%2044.1%2079%2044.2V36.2C73%2036%2067.5%2032.5%2065.2%2026H57Z%22%20fill%3D%22%2325F4EE%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Magenta%20offset%20note%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M55%2024V47.5C52.8%2046.2%2050.3%2045.5%2047.5%2045.5C39.8%2045.5%2033.5%2051.8%2033.5%2059.5C33.5%2067.2%2039.8%2073.5%2047.5%2073.5C55.2%2073.5%2061.5%2067.2%2061.5%2059.5V37.2C65.8%2040.3%2071.2%2042.1%2077%2042.2V34.2C71%2034%2065.5%2030.5%2063.2%2024H55Z%22%20fill%3D%22%23FE2C55%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20White%20foreground%20note%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M56%2025V48.5C53.8%2047.2%2051.3%2046.5%2048.5%2046.5C40.8%2046.5%2034.5%2052.8%2034.5%2060.5C34.5%2068.2%2040.8%2074.5%2048.5%2074.5C56.2%2074.5%2062.5%2068.2%2062.5%2060.5V38.2C66.8%2041.3%2072.2%2043.1%2078%2043.2V35.2C72%2035%2066.5%2031.5%2064.2%2025H56Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "https://tiktok.com",
+      "targetOpen": "_blank",
+      "order": 4,
+      "isActive": true,
+      "clicksCount": 29,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "6f94695f-4ac4-4dbf-8f85-1f98f57eeddf",
+      "name": "Google Maps Lokasi",
+      "categoryId": "65715c20-273f-4dc5-a7d4-e0eefeae5240",
+      "description": "Petunjuk arah navigasi dan denah lokasi kampus MA Plus MM",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22%23FFFFFF%22%20stroke%3D%22%23E2E8F0%22%20stroke-width%3D%222%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Google%20Maps%20Pin%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2016C36.7%2016%2026%2026.7%2026%2040C26%2057%2045.2%2078.5%2048.1%2081.6C49.1%2082.8%2050.9%2082.8%2051.9%2081.6C54.8%2078.5%2074%2057%2074%2040C74%2026.7%2063.3%2016%2050%2016Z%22%20fill%3D%22%23EA4335%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2016C43.5%2016%2037.6%2018.6%2033.3%2022.8L44.8%2042.5L50%2016Z%22%20fill%3D%22%234285F4%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M26%2040C26%2047.4%2029.5%2055.4%2035%2063.5L46.5%2043.8L33.3%2022.8C28.8%2027.3%2026%2033.3%2026%2040Z%22%20fill%3D%22%23FBBC04%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2082C49.5%2082%2048.8%2081.6%2048.1%2081.6C45.2%2078.5%2026%2057%2026%2040C26%2039.5%2026%2039%2026.1%2038.5L46.5%2043.8L50%2082Z%22%20fill%3D%22%2334A853%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2239%22%20r%3D%2210.5%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2239%22%20r%3D%227%22%20fill%3D%22%23C5221F%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "https://maps.google.com",
+      "targetOpen": "_blank",
+      "order": 5,
+      "isActive": true,
+      "clicksCount": 19,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "6d05cd9d-f412-4149-be0f-c7159acba926",
+      "name": "Daftarkan Prestasi",
+      "categoryId": "8daca99f-aead-4e41-a1f4-7bd6d6849a0d",
+      "description": "Pilih nama pendaftar & unggah piagam kejuaraan pendukung",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Cdefs%3E%0A%20%20%20%20%20%20%20%20%3ClinearGradient%20id%3D%22goldMedal%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%22100%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20stop-color%3D%22%23F59E0B%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%220.5%22%20stop-color%3D%22%23FBBF24%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23B45309%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%20%20%20%20%3CradialGradient%20id%3D%22shine%22%20cx%3D%2240%25%22%20cy%3D%2230%25%22%20r%3D%2260%25%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23FEF08A%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23D97706%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FradialGradient%3E%0A%20%20%20%20%20%20%3C%2Fdefs%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22url(%23goldMedal)%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Ribbons%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M38%2018L32%2046L46%2041L50%2018H38Z%22%20fill%3D%22%231E3A8A%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M62%2018L68%2046L54%2041L50%2018H62Z%22%20fill%3D%22%23B91C1C%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Trophy%20Icon%20--%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2254%22%20r%3D%2226%22%20fill%3D%22url(%23shine)%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%223%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Trophy%20Cup%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M38%2042H62V51C62%2057.6%2056.6%2063%2050%2063C43.4%2063%2038%2057.6%2038%2051V42Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M38%2045H32C30.9%2045%2030%2045.9%2030%2047V49C30%2052.3%2032.7%2055%2036%2055H38V45Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M62%2045H68C69.1%2045%2070%2045.9%2070%2047V49C70%2052.3%2067.3%2055%2064%2055H62V45Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2247%22%20y%3D%2263%22%20width%3D%226%22%20height%3D%227%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2242%22%20y%3D%2270%22%20width%3D%2216%22%20height%3D%225%22%20rx%3D%222%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Star%20on%20Cup%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2046L51.2%2049.5H55L52%2051.5L53.1%2055L50%2053L46.9%2055L48%2051.5L45%2049.5H48.8L50%2046Z%22%20fill%3D%22%23D97706%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "#daftarkan-prestasi",
+      "targetOpen": "_self",
+      "order": 6,
+      "isActive": true,
+      "clicksCount": 27,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:35:05.651Z"
+    },
+    {
+      "id": "4ec63e06-ba25-412c-a386-cfa280068e23",
+      "name": "Portal Web MA Plus MM",
+      "categoryId": "65715c20-273f-4dc5-a7d4-e0eefeae5240",
+      "description": "Profil lembaga, kurikulum terpadu, asrama, dan kabar madrasah",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Cdefs%3E%0A%20%20%20%20%20%20%20%20%3ClinearGradient%20id%3D%22crestGrad%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%22100%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20stop-color%3D%22%23064E3B%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23022C22%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%20%20%3C%2Fdefs%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22url(%23crestGrad)%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2234%22%20stroke%3D%22%23FBBF24%22%20stroke-width%3D%222.5%22%20stroke-dasharray%3D%224%203%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Mosque%20Dome%20%26%20Minaret%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2024C44%2032%2035%2036%2035%2048H65C65%2036%2056%2032%2050%2024Z%22%20fill%3D%22%23FBBF24%22%2F%3E%0A%20%20%20%20%20%20%3Crect%20x%3D%2248.5%22%20y%3D%2220%22%20width%3D%223%22%20height%3D%225%22%20fill%3D%22%23FBBF24%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2219%22%20r%3D%222.5%22%20fill%3D%22%23FBBF24%22%2F%3E%0A%20%20%20%20%20%20%3C!--%20Open%20Quran%20%2F%20Book%20--%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2054L34%2050V68L50%2072L66%2068V50L50%2054Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2054V72%22%20stroke%3D%22%23064E3B%22%20stroke-width%3D%222%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M38%2055L48%2058%22%20stroke%3D%22%23064E3B%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M38%2060L48%2063%22%20stroke%3D%22%23064E3B%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M62%2055L52%2058%22%20stroke%3D%22%23064E3B%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M62%2060L52%2063%22%20stroke%3D%22%23064E3B%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "https://maplusmm.sch.id",
+      "targetOpen": "_blank",
+      "order": 7,
+      "isActive": true,
+      "clicksCount": 31,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    },
+    {
+      "id": "8bf74318-23d1-4094-8fd8-93433203a1bd",
+      "name": "Saluran WhatsApp Resmi",
+      "categoryId": "65715c20-273f-4dc5-a7d4-e0eefeae5240",
+      "description": "Direktori kontak person panitia PPDB & layanan madrasah",
+      "iconType": "image",
+      "icon": "data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%20%20%20%20%20%20%3Cdefs%3E%0A%20%20%20%20%20%20%20%20%3ClinearGradient%20id%3D%22waGrad%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%22100%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20stop-color%3D%22%2325D366%22%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23128C7E%22%2F%3E%0A%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%20%20%3C%2Fdefs%3E%0A%20%20%20%20%20%20%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22url(%23waGrad)%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2227%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M50%2028C38%2028%2028.2%2037.8%2028.2%2049.8C28.2%2053.6%2029.2%2057.3%2031.1%2060.5L28%2072L39.9%2068.9C43%2070.6%2046.5%2071.5%2050%2071.5C62%2071.5%2071.8%2061.7%2071.8%2049.7C71.8%2037.7%2062%2028%2050%2028ZM62.7%2058.7C62.2%2060.1%2060.1%2061.3%2058.4%2061.6C57.2%2061.8%2055.7%2062%2050.4%2059.8C43.6%2057%2039.2%2050.1%2038.8%2049.6C38.5%2049.1%2036%2045.7%2036%2042.3C36%2038.9%2037.7%2037.2%2038.4%2036.5C39%2035.8%2040%2035.6%2040.8%2035.6C41.1%2035.6%2041.3%2035.6%2041.5%2035.6C42.2%2035.6%2042.5%2035.7%2043%2036.9C43.6%2038.3%2045%2041.8%2045.2%2042.2C45.4%2042.6%2045.5%2043.1%2045.2%2043.7C45%2044.2%2044.7%2044.5%2044.4%2044.9C44%2045.4%2043.7%2045.8%2043.3%2046.3C42.9%2046.7%2042.4%2047.2%2042.9%2048.1C43.4%2049%2045.1%2051.8%2047.7%2054.1C51%2057.1%2053.7%2058.1%2054.7%2058.5C55.7%2058.9%2056.3%2058.8%2056.9%2058.1C57.6%2057.3%2058.8%2055.7%2059.6%2054.6C60.2%2053.7%2061%2053.9%2061.8%2054.2C62.6%2054.5%2067%2056.7%2067.9%2057.2C68.8%2057.7%2069.4%2058%2069.6%2058.3C69.8%2058.8%2069.8%2060.4%2062.7%2058.7Z%22%20fill%3D%22%23128C7E%22%2F%3E%0A%20%20%20%20%3C%2Fsvg%3E",
+      "targetUrl": "#hubungi-panitia",
+      "targetOpen": "_self",
+      "order": 8,
+      "isActive": true,
+      "clicksCount": 47,
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    }
+  ],
+  "REGISTRATIONS": [],
+  "ANNOUNCEMENTS": [
+    {
+      "id": "0a68a4fa-5f5a-4453-9f92-e5bf6799096d",
+      "title": "Pengumuman Penting: Pembukaan PPDB & Seleksi Beasiswa Jalur Prestasi MA Plus MM",
+      "content": "Telah dibuka Penerimaan Peserta Didik & Santri Baru (PPDB) MA Plus Ma'hadul Muta'allimin Tahun Ajaran 2026/2027. Bagi calon santri yang telah mendaftar sebelumnya dan memiliki piagam/sertifikat kejuaraan dapat mengunggah berkas pendukung pada menu Daftarkan Prestasi.",
+      "imageUrl": "https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=1000&auto=format&fit=crop",
+      "publishDate": "2026-11-11",
+      "status": "published",
+      "createdAt": "2026-11-11T10:33:19.149Z",
+      "updatedAt": "2026-11-11T10:33:19.149Z"
+    }
+  ],
+  "DOCUMENTS": [],
+  "SITE_SETTINGS": {
+    "portalName": "PORTAL DIGITAL TERPADU",
+    "institutionName": "MA PLUS MA'HADUL MUTA'ALLIMIN",
+    "tagline": "One QR Code – One Portal – All Digital Services",
+    "description": "Pusat akses resmi seluruh layanan digital, pendaftaran santri PPDB, daftarkan prestasi santri, dokumen, dan saluran informasi resmi MA Plus MM.",
+    "logoUrl": "",
+    "faviconUrl": "",
+    "bannerUrl": "",
+    "primaryColor": "#065f46",
+    "accentColor": "#d97706",
+    "whatsappNumber": "+6281234567890",
+    "email": "tumaplusmahadulmutaallimin@gmail.com",
+    "address": "Jl. Terusan Pendidikan No. 45, Kompleks Terpadu",
+    "instagramUrl": "https://instagram.com",
+    "facebookUrl": "https://facebook.com",
+    "youtubeUrl": "https://youtube.com",
+    "tiktokUrl": "https://tiktok.com",
+    "websiteUrl": "https://lembaga.sch.id",
+    "copyrightText": "© 2026 Portal Digital Terpadu. Seluruh Hak Cipta Dilindungi.",
+    "heroEnabled": true,
+    "announcementsEnabled": true,
+    "registrationsEnabled": true,
+    "documentsEnabled": true,
+    "searchEnabled": true,
+    "categoriesEnabled": true,
+    "updatedAt": "2026-11-11T09:55:25.330Z"
+  },
+  "QR_SETTINGS": {
+    "portalUrl": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app",
+    "size": 320,
+    "foregroundColor": "#065f46",
+    "backgroundColor": "#ffffff",
+    "includeLogo": true,
+    "logoUrl": "",
+    "errorCorrectionLevel": "H",
+    "posterTitle": "PORTAL DIGITAL TERPADU",
+    "posterSubtitle": "Pindai QR Code untuk Mengakses Seluruh Layanan & Dokumen Resmi",
+    "posterFooter": "Buka kamera smartphone Anda dan arahkan ke kode QR di atas.",
+    "updatedAt": "2026-11-11T09:55:25.331Z"
+  },
+  "VISITORS": [
+    {
+      "id": "00510309-cfb2-4003-ab5e-3c1fc65fc2fb",
+      "timestamp": "2026-11-11T09:55:26.125Z",
+      "visitorId": "a0aqhwu2tc9",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
+      "referrer": "http://localhost:3000/",
+      "path": "/"
+    },
+    {
+      "id": "cd032c8d-206d-4b40-bfe0-778822a5bd92",
+      "timestamp": "2026-11-11T09:55:27.846Z",
+      "visitorId": "a0aqhwu2tc9",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
+      "referrer": "http://localhost:3000/",
+      "path": "/"
+    },
+    {
+      "id": "77505cde-5ad0-4cc1-9a6f-89e04e2020fa",
+      "timestamp": "2026-11-11T10:09:46.156Z",
+      "visitorId": "hs3cxgav426",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "referrer": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app/",
+      "path": "/"
+    },
+    {
+      "id": "7f195fbb-6e8e-4596-b931-16413c8680e4",
+      "timestamp": "2026-11-11T10:32:04.518Z",
+      "visitorId": "joe071mrrb",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
+      "referrer": "http://localhost:3000/",
+      "path": "/"
+    },
+    {
+      "id": "acaf2017-1f0c-40cc-8e2a-7c8ce10ab6bd",
+      "timestamp": "2026-11-11T10:33:25.313Z",
+      "visitorId": "joe071mrrb",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
+      "referrer": "http://localhost:3000/",
+      "path": "/"
+    },
+    {
+      "id": "2ad74e93-5b40-4e1e-962a-0707db2ae275",
+      "timestamp": "2026-11-11T10:34:58.411Z",
+      "visitorId": "joe071mrrb",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
+      "referrer": "http://localhost:3000/",
+      "path": "/"
+    },
+    {
+      "id": "0d46cbb4-a5f5-4558-9ad1-1b08463d1609",
+      "timestamp": "2026-11-11T10:35:22.966Z",
+      "visitorId": "joe071mrrb",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
+      "referrer": "http://localhost:3000/",
+      "path": "/"
+    },
+    {
+      "id": "10d12c99-82b4-4dad-8f21-cbb311aad12a",
+      "timestamp": "2026-11-11T10:35:24.093Z",
+      "visitorId": "hs3cxgav426",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "referrer": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app/",
+      "path": "/"
+    },
+    {
+      "id": "d8ec5679-cd25-4fe1-8e91-43079bf704ac",
+      "timestamp": "2026-11-11T10:35:28.060Z",
+      "visitorId": "joe071mrrb",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
+      "referrer": "http://localhost:3000/",
+      "path": "/"
+    }
+  ],
+  "LINK_CLICKS": [
+    {
+      "id": "4a1aa6d0-c253-4bd5-a363-6c43a33ec71d",
+      "linkId": "6d05cd9d-f412-4149-be0f-c7159acba926",
+      "linkName": "Daftarkan Prestasi",
+      "categoryId": "8daca99f-aead-4e41-a1f4-7bd6d6849a0d",
+      "timestamp": "2026-11-11T10:33:47.509Z",
+      "visitorId": "joe071mrrb"
+    },
+    {
+      "id": "19ccd166-868a-49e0-aa57-313d45a04f91",
+      "linkId": "6d05cd9d-f412-4149-be0f-c7159acba926",
+      "linkName": "Daftarkan Prestasi",
+      "categoryId": "8daca99f-aead-4e41-a1f4-7bd6d6849a0d",
+      "timestamp": "2026-11-11T10:35:05.651Z",
+      "visitorId": "joe071mrrb"
+    }
+  ],
+  "ACTIVITY_LOGS": [
+    {
+      "id": "52b05dbe-3fcf-4b32-8507-32c02f39ee71",
+      "timestamp": "2026-11-11T10:31:51.152Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "LOGIN_FAILED",
+      "details": "Percobaan login gagal dengan password salah dari IP 127.0.0.1",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "160d198a-7533-4397-8084-57c44a1f7c95",
+      "timestamp": "2026-11-11T10:29:58.005Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "LOGIN_FAILED",
+      "details": "Percobaan login gagal dengan password salah dari IP 127.0.0.1",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "9360cbe1-919d-4994-acc1-eaefe6f80b42",
+      "timestamp": "2026-11-11T10:29:10.784Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "LOGIN_FAILED",
+      "details": "Percobaan login gagal dengan password salah dari IP 127.0.0.1",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "2e58c5bb-7ef7-42d1-86be-07b926de98b1",
+      "timestamp": "2026-11-11T09:56:19.843Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "CREATE_LINK",
+      "details": "Layanan \"Website Resmi Madrasah\" (https://madrasah.sch.id) berhasil ditambahkan.",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "1a7c1baa-eb6f-4a9d-8663-330048457b9e",
+      "timestamp": "2026-11-11T09:55:56.879Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "PASSWORD_CHANGED",
+      "details": "Password akun administrator berhasil diganti permanen. Status mustChangePassword dinonaktifkan.",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "2604d050-6456-4a11-b50e-0253ec5570c8",
+      "timestamp": "2026-11-11T09:55:42.239Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "LOGIN_SUCCESS",
+      "details": "Login berhasil (Wajib ganti password pertama)",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "1a9823ea-a295-4100-bc00-c77de4d5f0cf",
+      "timestamp": "2026-11-11T09:55:25.401Z",
+      "userId": "system",
+      "username": "SYSTEM",
+      "action": "INITIALIZE_DATABASE",
+      "details": "Database DB_PORTAL_DIGITAL berhasil diinisialisasi secara otomatis tanpa data dummy.",
+      "ipAddress": "127.0.0.1"
+    }
+  ],
+  "SYSTEM_CONFIG": {
+    "version": "1.0.0",
+    "appName": "Portal Digital Terpadu",
+    "databaseName": "DB_PORTAL_DIGITAL",
+    "installationCompleted": true,
+    "installedAt": "2026-11-11T09:55:25.363Z",
+    "lastBackupAt": null,
+    "maxLoginAttempts": 5,
+    "sessionTimeoutHours": 8
+  },
+  "BACKUP_LOGS": [],
+  "STUDENT_ACHIEVEMENTS": [],
+  "COMMITTEE_CONTACTS": [
+    {
+      "id": "panitia-1",
+      "name": "Ustadz Ahmad Fauzi, S.Pd.",
+      "role": "Ketua Panitia PPDB 2026/2027",
+      "whatsappNumber": "+6281234567891",
+      "notes": "Konsultasi syarat pendaftaran, alur tes, dan seleksi masuk",
+      "isAvailable": true
+    },
+    {
+      "id": "panitia-2",
+      "name": "Ustadzah Nurul Hidayah, M.Pd.",
+      "role": "Sekretariat & Pendaftaran Prestasi",
+      "whatsappNumber": "+6281234567892",
+      "notes": "Verifikasi piagam penghargaan, beasiswa prestasi, dan tahfidz",
+      "isAvailable": true
+    },
+    {
+      "id": "panitia-3",
+      "name": "Ustadz Muhammad Ilham, S.Kom.",
+      "role": "Humas & Saluran Informasi Madrasah",
+      "whatsappNumber": "+6281234567893",
+      "notes": "Informasi umum madrasah, kunjungan kampus, dan media sosial",
+      "isAvailable": true
+    },
+    {
+      "id": "panitia-4",
+      "name": "Ustadz Hasan Basri, Lc.",
+      "role": "Koordinator Kepondokan & Asrama Santri",
+      "whatsappNumber": "+6281234567894",
+      "notes": "Informasi fasilitas asrama, tata tertib, dan program kepondokan",
+      "isAvailable": true
+    }
+  ]
+}
