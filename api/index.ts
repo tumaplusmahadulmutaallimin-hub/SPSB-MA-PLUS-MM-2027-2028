@@ -6,6 +6,13 @@ import { loadDatabase, getDbFile } from '../server/db.js';
 // Do NOT import ../server.ts here because server.ts calls app.listen().
 const app = express();
 
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Safe JSON body parser for Vercel: prevents hanging or "stream is not readable"
 // if Vercel's Node wrapper has already parsed or consumed req.body.
 const jsonParser = express.json({ limit: '15mb' });

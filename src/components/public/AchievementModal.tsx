@@ -28,6 +28,10 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
   const [applicantResults, setApplicantResults] = useState<any[]>([]);
   const [selectedApplicant, setSelectedApplicant] = useState<{ name: string; nisn: string; registeredProgram: string } | null>(null);
 
+  const [manualName, setManualName] = useState('');
+  const [manualNisn, setManualNisn] = useState('');
+  const [manualProgram, setManualProgram] = useState('PPDB MA Plus MM');
+
   // Form states
   const [achievementTitle, setAchievementTitle] = useState('');
   const [field, setField] = useState('tahfidz');
@@ -45,7 +49,9 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
   // Search applicants from server
   useEffect(() => {
     if (isOpen) {
-      fetch(`/api/public/achievements/search-applicant?query=${encodeURIComponent(applicantSearch)}`)
+      fetch(`/api/public/achievements/search-applicant?query=${encodeURIComponent(applicantSearch)}`, {
+        cache: 'no-store',
+      })
         .then((res) => res.json())
         .then((data) => {
           if (data.results) setApplicantResults(data.results);
@@ -75,7 +81,23 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
   };
 
   const handleSelectApplicant = (applicant: any) => {
+    setErrorMessage('');
     setSelectedApplicant(applicant);
+    setStep('fill_form');
+  };
+
+  const handleManualApplicantProceed = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualName.trim() || !manualNisn.trim()) {
+      setErrorMessage('Nama pendaftar dan NISN / Nomor Pendaftaran PPDB wajib diisi.');
+      return;
+    }
+    setErrorMessage('');
+    setSelectedApplicant({
+      name: manualName.trim(),
+      nisn: manualNisn.trim(),
+      registeredProgram: manualProgram.trim() || 'Pendaftar PPDB MA Plus MM',
+    });
     setStep('fill_form');
   };
 
@@ -135,6 +157,8 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
   const resetAll = () => {
     setStep('select_applicant');
     setSelectedApplicant(null);
+    setManualName('');
+    setManualNisn('');
     setAchievementTitle('');
     setCertificateData('');
     setCertificateName('');
@@ -175,38 +199,77 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
           </div>
         )}
 
-        {/* STEP 1: SELECT APPLICANT */}
+        {/* STEP 1: SELECT OR IDENTIFY APPLICANT */}
         {step === 'select_applicant' && (
           <div className="space-y-4">
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900">
-              <p className="font-semibold mb-0.5">Langkah 1: Temukan Data Pendaftaran Anda</p>
+              <p className="font-semibold mb-0.5">Langkah 1: Identifikasi Data Pendaftaran PPDB Anda</p>
               <p className="text-[11px] text-emerald-800 leading-relaxed">
-                Ketik nama calon santri atau NISN Anda yang telah terdaftar pada formulir pendaftaran PPDB sebelumnya untuk memilih nama.
+                Cari nama yang sudah terdata atau masukkan Nama Lengkap &amp; NISN / Nomor Pendaftaran PPDB Anda untuk melanjutkan unggah piagam prestasi.
               </p>
             </div>
 
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Cari berdasarkan nama atau NISN pendaftar..."
-                value={applicantSearch}
-                onChange={(e) => setApplicantSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
+            <form onSubmit={handleManualApplicantProceed} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+              <p className="font-bold text-slate-800 text-xs">Konfirmasi Identitas Pendaftar Terdaftar</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Nama Lengkap Pendaftar *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Sesuai formulir PPDB"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">NISN / No. Pendaftaran *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: 0081234567"
+                    value={manualNisn}
+                    onChange={(e) => setManualNisn(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Jalur / Program Pendaftaran</label>
+                <input
+                  type="text"
+                  placeholder="PPDB MA Plus MM"
+                  value={manualProgram}
+                  onChange={(e) => setManualProgram(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow-xs cursor-pointer transition-colors"
+              >
+                Lanjutkan ke Formulir &amp; Unggah Dokumen
+              </button>
+            </form>
 
-            <div className="space-y-2">
-              <p className="font-semibold text-slate-700">Pilih Nama Pendaftar:</p>
-              <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                {applicantResults.length === 0 ? (
-                  <div className="p-4 text-center text-slate-400 bg-slate-50 rounded-xl">
-                    Nama pendaftar tidak ditemukan. Pastikan Anda telah mengisi formulir pendaftaran terlebih dahulu.
-                  </div>
-                ) : (
-                  applicantResults.map((app) => (
+            {applicantResults.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Atau pilih dari nama yang sudah pernah terdata..."
+                    value={applicantSearch}
+                    onChange={(e) => setApplicantSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                  {applicantResults.map((app) => (
                     <div
-                      key={app.nisn}
+                      key={`${app.name}-${app.nisn}`}
                       onClick={() => handleSelectApplicant(app)}
                       className="p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 transition-all cursor-pointer flex items-center justify-between"
                     >
@@ -218,10 +281,10 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
                         Pilih Nama
                       </span>
                     </div>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

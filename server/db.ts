@@ -25,7 +25,6 @@ import {
   generateTemporaryPassword,
   generateUUID,
 } from '../src/lib/crypto.js';
-import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../src/lib/brandAssets.js';
 
 const BUNDLED_DATA_DIR = path.resolve(process.cwd(), 'data');
 const BUNDLED_DB_FILE = path.join(BUNDLED_DATA_DIR, 'db_portal_digital.json');
@@ -83,17 +82,17 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
   logoUrl: '',
   faviconUrl: '',
   bannerUrl: '',
-  primaryColor: '#065f46', // Emerald / Forest Green
-  accentColor: '#d97706',  // Warm Gold
-  whatsappNumber: '+6281234567890',
+  primaryColor: '#065f46',
+  accentColor: '#d97706',
+  whatsappNumber: '',
   email: 'tumaplusmahadulmutaallimin@gmail.com',
-  address: 'Kompleks Pesantren Ma\'hadul Muta\'allimin, Jawa Timur',
-  instagramUrl: 'https://instagram.com',
-  facebookUrl: 'https://facebook.com',
-  youtubeUrl: 'https://youtube.com',
-  tiktokUrl: 'https://tiktok.com',
-  websiteUrl: 'https://maplusmm.sch.id',
-  copyrightText: '© ' + new Date().getFullYear() + ' MA Plus Ma\'hadul Muta\'allimin. Seluruh Hak Cipta Dilindungi.',
+  address: '',
+  instagramUrl: '',
+  facebookUrl: '',
+  youtubeUrl: '',
+  tiktokUrl: '',
+  websiteUrl: '',
+  copyrightText: '© ' + new Date().getFullYear() + " MA Plus Ma'hadul Muta'allimin. Seluruh Hak Cipta Dilindungi.",
   heroEnabled: true,
   announcementsEnabled: true,
   registrationsEnabled: true,
@@ -103,102 +102,12 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
   updatedAt: new Date().toISOString(),
 };
 
-export const DEFAULT_COMMITTEE_CONTACTS = [
-  {
-    id: 'panitia-1',
-    name: 'Ustadz Ahmad Fauzi, S.Pd.',
-    role: 'Ketua Panitia PPDB 2026/2027',
-    whatsappNumber: '+6281234567891',
-    notes: 'Konsultasi syarat pendaftaran, alur tes, dan seleksi masuk',
-    isAvailable: true,
-  },
-  {
-    id: 'panitia-2',
-    name: 'Ustadzah Nurul Hidayah, M.Pd.',
-    role: 'Sekretariat & Pendaftaran Prestasi',
-    whatsappNumber: '+6281234567892',
-    notes: 'Verifikasi piagam penghargaan, beasiswa prestasi, dan tahfidz',
-    isAvailable: true,
-  },
-  {
-    id: 'panitia-3',
-    name: 'Ustadz Muhammad Ilham, S.Kom.',
-    role: 'Humas & Saluran Informasi Madrasah',
-    whatsappNumber: '+6281234567893',
-    notes: 'Informasi umum madrasah, kunjungan kampus, dan media sosial',
-    isAvailable: true,
-  },
-  {
-    id: 'panitia-4',
-    name: 'Ustadz Hasan Basri, Lc.',
-    role: 'Koordinator Kepondokan & Asrama Santri',
-    whatsappNumber: '+6281234567894',
-    notes: 'Informasi fasilitas asrama, tata tertib, dan program kepondokan',
-    isAvailable: true,
-  },
-];
+export const DEFAULT_COMMITTEE_CONTACTS: any[] = [];
 
-export const DEFAULT_MADRASAH_ACHIEVEMENTS: MadrasahAchievement[] = [
-  {
-    id: 'ach-madrasah-1',
-    title: 'Juara 1 Nasional Madrasah Robotics Competition (MRC)',
-    category: 'Robotik & Sains',
-    level: 'Tingkat Nasional',
-    recipient: 'Tim Robotik Santri MA Plus MM',
-    year: '2026',
-    photoUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80',
-    shortDescription: 'Meraih Juara 1 Nasional kategori Mobile Robot & IoT Innovation mengalahkan ratusan madrasah se-Indonesia.',
-    order: 1,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'ach-madrasah-2',
-    title: 'Juara Umum Musabaqah Hifdzil Qur\'an (MHQ) 30 Juz & Tafsir',
-    category: 'Tahfidz Al-Qur\'an',
-    level: 'Tingkat Provinsi Jawa Timur',
-    recipient: 'Kafilah Santri Tahfidz MA Plus MM',
-    year: '2026',
-    photoUrl: 'https://images.unsplash.com/photo-1609599006353-e629aaabfeae?auto=format&fit=crop&w=800&q=80',
-    shortDescription: 'Memperoleh predikat Juara Umum dengan tajwid mutqin, kefasihan makhraj, dan pemahaman tafsir Al-Qur\'an terbaik.',
-    order: 2,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'ach-madrasah-3',
-    title: 'Medali Emas KSM Bidang Matematika & Fisika Terintegrasi',
-    category: 'Kompetisi Sains Madrasah',
-    level: 'Tingkat Provinsi Jawa Timur',
-    recipient: 'Santri Berprestasi MA Plus MM',
-    year: '2025/2026',
-    photoUrl: 'https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?auto=format&fit=crop&w=800&q=80',
-    shortDescription: 'Meraih medali emas pada integrasi sains modern dengan khazanah nilai-nilai dan dalil Al-Qur\'an.',
-    order: 3,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'ach-madrasah-4',
-    title: 'Juara 1 Pidato & Debat Bahasa Arab Pesantren Se-Indonesia',
-    category: 'Bahasa & Literasi',
-    level: 'Tingkat Nasional',
-    recipient: 'Klub Bahasa Arab MA Plus MM',
-    year: '2025',
-    photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80',
-    shortDescription: 'Juara 1 dalam penguasaan tata bahasa fushah, retorika dakwah, dan argumentasi ilmiah antar madrasah plus.',
-    order: 4,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+export const DEFAULT_MADRASAH_ACHIEVEMENTS: MadrasahAchievement[] = [];
 
 const DEFAULT_QR_SETTINGS: QrSettings = {
-  portalUrl: process.env.APP_URL || 'http://localhost:3000',
+  portalUrl: process.env.APP_URL || '',
   size: 320,
   foregroundColor: '#065f46',
   backgroundColor: '#ffffff',
@@ -206,7 +115,7 @@ const DEFAULT_QR_SETTINGS: QrSettings = {
   logoUrl: '',
   errorCorrectionLevel: 'H',
   posterTitle: 'PORTAL DIGITAL TERPADU',
-  posterSubtitle: 'Pusat Akses Layanan Resmi MA Plus Ma\'hadul Muta\'allimin',
+  posterSubtitle: "Pusat Akses Layanan Resmi MA Plus Ma'hadul Muta'allimin",
   posterFooter: 'Buka kamera smartphone Anda dan arahkan ke kode QR di atas.',
   updatedAt: new Date().toISOString(),
 };
@@ -303,194 +212,25 @@ export function loadDatabase(): DatabaseSchema {
     return inMemoryDb;
   }
 
-  // If running in serverless read-only mode without traced data/db_portal_digital.json,
-  // initialize with the official MA PLUS MM portal seed so public portal & 1-click setup work out of the box.
+  // In serverless read-only mode without bundled file, initialize clean without dummy data
   if (!process.env.PORTAL_DB_FILE && isServerlessReadOnly()) {
-    const seeded = buildServerlessPortalSeed();
-    saveDatabase(seeded);
-    return seeded;
+    const clean = buildCleanServerlessDatabase();
+    saveDatabase(clean);
+    return clean;
   }
 
   return initializeDatabase().db;
 }
 
-function buildServerlessPortalSeed(): DatabaseSchema {
+function buildCleanServerlessDatabase(): DatabaseSchema {
   const now = new Date().toISOString();
-  const catPpdbId = '8daca99f-aead-4e41-a1f4-7bd6d6849a0d';
-  const catMediaId = '5a6049cd-068b-40fe-96f2-a14375070b42';
-  const catCampusId = '65715c20-273f-4dc5-a7d4-e0eefeae5240';
-
-  const seeded: DatabaseSchema = {
+  const cleanDb: DatabaseSchema = {
     USERS: [],
     ROLES: DEFAULT_ROLES,
-    CATEGORIES: [
-      {
-        id: catPpdbId,
-        name: 'Layanan PPDB & Pendaftaran',
-        description: 'Formulir pendaftaran santri baru dan portal prestasi',
-        icon: 'UserPlus',
-        order: 1,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: catMediaId,
-        name: 'Media Sosial & Penyiaran',
-        description: 'Saluran resmi informasi, kajian, dan kreasi santri',
-        icon: 'Share2',
-        order: 2,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: catCampusId,
-        name: 'Informasi & Layanan Kampus',
-        description: 'Website resmi, denah lokasi Google Maps, dan kontak panitia',
-        icon: 'School',
-        order: 3,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-    LINKS: [
-      {
-        id: 'fe7c58b4-1eb1-480f-9b42-73d0e1584753',
-        name: OFFICIAL_BRAND_ASSETS.ppdb_form.name,
-        categoryId: catPpdbId,
-        description: OFFICIAL_BRAND_ASSETS.ppdb_form.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.ppdb_form.svgBadge),
-        targetUrl: '#ppdb-section',
-        targetOpen: '_self',
-        order: 1,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'f107447a-ca2d-4460-b83c-7536d8822721',
-        name: OFFICIAL_BRAND_ASSETS.instagram.name,
-        categoryId: catMediaId,
-        description: OFFICIAL_BRAND_ASSETS.instagram.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.instagram.svgBadge),
-        targetUrl: OFFICIAL_BRAND_ASSETS.instagram.defaultUrl,
-        targetOpen: '_blank',
-        order: 2,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: '1ccc7033-b20d-41ce-ae88-7bdd6b528296',
-        name: OFFICIAL_BRAND_ASSETS.youtube.name,
-        categoryId: catMediaId,
-        description: OFFICIAL_BRAND_ASSETS.youtube.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.youtube.svgBadge),
-        targetUrl: OFFICIAL_BRAND_ASSETS.youtube.defaultUrl,
-        targetOpen: '_blank',
-        order: 3,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: '352ce662-45bd-4140-8b9c-d5ff4553b5ad',
-        name: OFFICIAL_BRAND_ASSETS.tiktok.name,
-        categoryId: catMediaId,
-        description: OFFICIAL_BRAND_ASSETS.tiktok.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.tiktok.svgBadge),
-        targetUrl: OFFICIAL_BRAND_ASSETS.tiktok.defaultUrl,
-        targetOpen: '_blank',
-        order: 4,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: '6f94695f-4ac4-4dbf-8f85-1f98f57eeddf',
-        name: OFFICIAL_BRAND_ASSETS.google_maps.name,
-        categoryId: catCampusId,
-        description: OFFICIAL_BRAND_ASSETS.google_maps.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.google_maps.svgBadge),
-        targetUrl: OFFICIAL_BRAND_ASSETS.google_maps.defaultUrl,
-        targetOpen: '_blank',
-        order: 5,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: '6d05cd9d-f412-4149-be0f-c7159acba926',
-        name: OFFICIAL_BRAND_ASSETS.daftarkan_prestasi.name,
-        categoryId: catPpdbId,
-        description: OFFICIAL_BRAND_ASSETS.daftarkan_prestasi.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.daftarkan_prestasi.svgBadge),
-        targetUrl: '#daftarkan-prestasi',
-        targetOpen: '_self',
-        order: 6,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: '4ec63e06-ba25-412c-a386-cfa280068e23',
-        name: OFFICIAL_BRAND_ASSETS.portal_web.name,
-        categoryId: catCampusId,
-        description: OFFICIAL_BRAND_ASSETS.portal_web.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.portal_web.svgBadge),
-        targetUrl: OFFICIAL_BRAND_ASSETS.portal_web.defaultUrl,
-        targetOpen: '_blank',
-        order: 7,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: '8bf74318-23d1-4094-8fd8-93433203a1bd',
-        name: OFFICIAL_BRAND_ASSETS.saluran_whatsapp.name,
-        categoryId: catCampusId,
-        description: OFFICIAL_BRAND_ASSETS.saluran_whatsapp.description,
-        iconType: 'image',
-        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.saluran_whatsapp.svgBadge),
-        targetUrl: '#hubungi-panitia',
-        targetOpen: '_self',
-        order: 8,
-        isActive: true,
-        clicksCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
+    CATEGORIES: [],
+    LINKS: [],
     REGISTRATIONS: [],
-    ANNOUNCEMENTS: [
-      {
-        id: '0a68a4fa-5f5a-4453-9f92-e5bf6799096d',
-        title: 'Pengumuman Penting: Pembukaan PPDB & Seleksi Beasiswa Jalur Prestasi MA Plus MM',
-        content:
-          "Telah dibuka Penerimaan Peserta Didik & Santri Baru (PPDB) MA Plus Ma'hadul Muta'allimin Tahun Ajaran 2026/2027. Bagi calon santri yang telah mendaftar sebelumnya dan memiliki piagam/sertifikat kejuaraan dapat mengunggah berkas pendukung pada menu Daftarkan Prestasi.",
-        imageUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=1000&auto=format&fit=crop',
-        publishDate: now.split('T')[0],
-        status: 'published',
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
+    ANNOUNCEMENTS: [],
     DOCUMENTS: [],
     SITE_SETTINGS: { ...DEFAULT_SITE_SETTINGS },
     QR_SETTINGS: { ...DEFAULT_QR_SETTINGS },
@@ -506,16 +246,16 @@ function buildServerlessPortalSeed(): DatabaseSchema {
       lastBackupAt: null,
       maxLoginAttempts: 5,
       sessionTimeoutHours: 8,
-      hasCustomAdminCreated: false,
+      hasCustomAdminCreated: true,
     },
     BACKUP_LOGS: [],
     STUDENT_ACHIEVEMENTS: [],
-    COMMITTEE_CONTACTS: [...DEFAULT_COMMITTEE_CONTACTS],
-    MADRASAH_ACHIEVEMENTS: [...DEFAULT_MADRASAH_ACHIEVEMENTS],
+    COMMITTEE_CONTACTS: [],
+    MADRASAH_ACHIEVEMENTS: [],
   };
 
-  createInitialAdmin(seeded);
-  return seeded;
+  createInitialAdmin(cleanDb);
+  return cleanDb;
 }
 
 /**
@@ -558,8 +298,8 @@ export function initializeDatabase(): { db: DatabaseSchema; setupCredentials: Se
   const initialDb: DatabaseSchema = {
     USERS: [],
     ROLES: DEFAULT_ROLES,
-    CATEGORIES: [], // Absolute rule: No dummy data
-    LINKS: [],      // Absolute rule: No dummy data
+    CATEGORIES: [],
+    LINKS: [],
     REGISTRATIONS: [],
     ANNOUNCEMENTS: [],
     DOCUMENTS: [],
@@ -577,11 +317,12 @@ export function initializeDatabase(): { db: DatabaseSchema; setupCredentials: Se
       lastBackupAt: null,
       maxLoginAttempts: 5,
       sessionTimeoutHours: 8,
+      hasCustomAdminCreated: true,
     },
     BACKUP_LOGS: [],
     STUDENT_ACHIEVEMENTS: [],
-    COMMITTEE_CONTACTS: [...DEFAULT_COMMITTEE_CONTACTS],
-    MADRASAH_ACHIEVEMENTS: [...DEFAULT_MADRASAH_ACHIEVEMENTS],
+    COMMITTEE_CONTACTS: [],
+    MADRASAH_ACHIEVEMENTS: [],
   };
 
   // Generate initial administrator account automatically
@@ -633,8 +374,8 @@ export function migrateDatabase(db: Partial<DatabaseSchema>): DatabaseSchema {
     },
     BACKUP_LOGS: Array.isArray(db.BACKUP_LOGS) ? db.BACKUP_LOGS : [],
     STUDENT_ACHIEVEMENTS: Array.isArray(db.STUDENT_ACHIEVEMENTS) ? db.STUDENT_ACHIEVEMENTS : [],
-    COMMITTEE_CONTACTS: Array.isArray(db.COMMITTEE_CONTACTS) && db.COMMITTEE_CONTACTS.length > 0 ? db.COMMITTEE_CONTACTS : DEFAULT_COMMITTEE_CONTACTS,
-    MADRASAH_ACHIEVEMENTS: Array.isArray(db.MADRASAH_ACHIEVEMENTS) && db.MADRASAH_ACHIEVEMENTS.length > 0 ? db.MADRASAH_ACHIEVEMENTS : DEFAULT_MADRASAH_ACHIEVEMENTS,
+    COMMITTEE_CONTACTS: Array.isArray(db.COMMITTEE_CONTACTS) ? db.COMMITTEE_CONTACTS : [],
+    MADRASAH_ACHIEVEMENTS: Array.isArray(db.MADRASAH_ACHIEVEMENTS) ? db.MADRASAH_ACHIEVEMENTS : [],
   };
 
   // If no admin user exists, create the fixed admin account

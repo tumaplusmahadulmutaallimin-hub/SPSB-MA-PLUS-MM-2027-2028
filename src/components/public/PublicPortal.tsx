@@ -96,17 +96,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  // Handle service card click
+  // Handle service card click (hanya membuka modal/scroll untuk target internal #...)
   const handleCardClick = (link: ServiceLink) => {
-    if (link.targetUrl === '#achievement-portal' || link.name.toLowerCase().includes('prestasi')) {
+    const url = (link.targetUrl || '').trim();
+    if (url === '#achievement-portal' || url === '#daftarkan-prestasi') {
       setShowAchievementModal(true);
       return;
     }
-    if (link.targetUrl === '#committee-contacts' || link.name.toLowerCase().includes('saluran whatsapp')) {
+    if (url === '#committee-contacts' || url === '#hubungi-panitia') {
       setShowCommitteeModal(true);
       return;
     }
-    if (link.targetUrl === '#ppdb-registration') {
+    if (url === '#ppdb-registration' || url === '#ppdb-section') {
       const element = document.getElementById('ppdb-section');
       if (element) {
         element.scrollIntoView({ behavior: 'smooth' });
@@ -134,66 +135,70 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     });
   }, [links, categories, selectedCategoryId, searchQuery]);
 
-  // Primary brand colors
+  // Brand colors
   const brandPrimary = siteSettings.primaryColor || '#065f46';
   const brandAccent = siteSettings.accentColor || '#d97706';
+  const showAnnouncements = siteSettings.announcementsEnabled !== false;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* ----------------- TOP INSTITUTION BAR ----------------- */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-3">
           {/* Logo & Identity */}
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             {siteSettings.logoUrl ? (
               <img
                 src={siteSettings.logoUrl}
                 alt={siteSettings.institutionName}
-                className="w-11 h-11 object-contain rounded-xl border border-slate-200 shrink-0"
+                className="w-10 h-10 sm:w-11 sm:h-11 object-contain rounded-xl border border-slate-200 shrink-0 bg-white"
               />
             ) : (
               <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0"
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0"
                 style={{ backgroundColor: brandPrimary }}
               >
-                <Sparkles className="w-6 h-6 text-amber-300" />
+                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300" />
               </div>
             )}
             <div className="min-w-0">
-              <h1 className="font-extrabold text-sm sm:text-base text-slate-900 leading-tight truncate">
+              <h1 className="font-extrabold text-xs sm:text-base text-slate-900 leading-tight truncate">
                 {siteSettings.institutionName || "MA PLUS MA'HADUL MUTA'ALLIMIN"}
               </h1>
-              <p className="text-[11px] sm:text-xs text-emerald-800 font-semibold truncate">
+              <p
+                className="text-[10px] sm:text-xs font-semibold truncate"
+                style={{ color: brandPrimary }}
+              >
                 {siteSettings.portalName || 'PORTAL DIGITAL TERPADU'}
               </p>
             </div>
           </div>
 
           {/* Quick Actions & Contact Button */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Primary Request: HUBUNGI MA PLUS MM */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               onClick={() => setShowCommitteeModal(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all cursor-pointer"
+              style={{ backgroundColor: brandPrimary }}
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs font-bold rounded-xl hover:opacity-90 text-white shadow-sm transition-all cursor-pointer"
               title="Hubungi Panitia & Kontak Resmi MA Plus MM"
             >
-              <MessageCircle className="w-4 h-4 text-emerald-200" />
+              <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/90" />
               <span className="hidden sm:inline">Hubungi MA PLUS MM</span>
               <span className="sm:hidden">Kontak</span>
             </button>
 
             <button
               onClick={handleOpenQrModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer"
               title="Tampilkan QR Code Portal"
             >
-              <QrCode className="w-4 h-4 text-amber-600" />
+              <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
               <span className="hidden md:inline">QR Portal</span>
             </button>
 
             <button
               onClick={onOpenAdminLogin}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
               title="Akses Dashboard Administrator"
             >
               <Lock className="w-3.5 h-3.5" />
@@ -206,33 +211,44 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       {/* ----------------- HERO BANNER SECTION ----------------- */}
       {siteSettings.heroEnabled && (
         <section
-          className="relative text-white py-12 sm:py-16 px-4 sm:px-6 lg:px-8 overflow-hidden shadow-inner"
+          className="relative text-white py-10 sm:py-16 px-4 sm:px-6 lg:px-8 overflow-hidden shadow-inner"
           style={{
-            background: `linear-gradient(135deg, ${brandPrimary} 0%, #064e3b 60%, #022c22 100%)`,
+            background: `linear-gradient(135deg, ${brandPrimary} 0%, ${brandPrimary}dd 55%, #022c22 100%)`,
           }}
         >
+          {siteSettings.bannerUrl && (
+            <img
+              src={siteSettings.bannerUrl}
+              alt={siteSettings.institutionName}
+              className="absolute inset-0 w-full h-full object-cover opacity-20 pointer-events-none"
+            />
+          )}
+
           {/* Subtle Islamic Geometric Backdrop Pattern */}
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]"></div>
 
           <div className="relative max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/10 backdrop-blur-md text-amber-300 text-xs font-bold border border-white/15 mb-4 shadow-xs">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{siteSettings.tagline || 'One QR Code – One Portal – All Digital Services'}</span>
-            </div>
+            {siteSettings.tagline && (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/10 backdrop-blur-md text-amber-300 text-[11px] sm:text-xs font-bold border border-white/15 mb-4 shadow-xs max-w-full">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{siteSettings.tagline}</span>
+              </div>
+            )}
 
-            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white mb-3">
+            <h2 className="text-xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white mb-3 leading-tight">
               {siteSettings.institutionName || "MA PLUS MA'HADUL MUTA'ALLIMIN"}
             </h2>
 
-            <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl mx-auto mb-6 leading-relaxed">
-              {siteSettings.description ||
-                'Pusat akses resmi seluruh layanan digital, pendaftaran PPDB, pendaftaran prestasi, dan saluran informasi resmi MA Plus MM.'}
-            </p>
+            {siteSettings.description && (
+              <p className="text-xs sm:text-sm text-white/90 max-w-2xl mx-auto mb-6 leading-relaxed">
+                {siteSettings.description}
+              </p>
+            )}
 
-            <div className="flex flex-wrap items-center justify-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
               <a
                 href="#services-section"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all transform hover:-translate-y-0.5 cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all transform hover:-translate-y-0.5 hover:opacity-95 cursor-pointer"
                 style={{ backgroundColor: brandAccent, color: '#ffffff' }}
               >
                 <span>Buka Ikon Layanan</span>
@@ -241,7 +257,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
               <button
                 onClick={() => setShowAchievementModal(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-white text-emerald-900 hover:bg-slate-100 shadow-md transition-all cursor-pointer"
+                style={{ color: brandPrimary }}
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-white hover:bg-slate-100 shadow-md transition-all cursor-pointer"
               >
                 <Award className="w-4 h-4 text-amber-600" />
                 <span>Daftarkan Prestasi</span>
@@ -249,9 +266,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
               <button
                 onClick={() => setShowCommitteeModal(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-md shadow-xs transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-md shadow-xs transition-all cursor-pointer"
               >
-                <Phone className="w-4 h-4 text-emerald-300" />
+                <Phone className="w-4 h-4 text-amber-300" />
                 <span>Saluran WhatsApp Panitia</span>
               </button>
             </div>
@@ -260,98 +277,106 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       )}
 
       {/* ----------------- DUAL SHOWCASE: MENU PENGUMUMAN PENTING & PRESTASI MADRASAH ----------------- */}
-      <section className="bg-gradient-to-b from-amber-50/70 via-emerald-50/20 to-slate-50/60 border-b border-amber-200/80 py-8 px-4 sm:px-6 lg:px-8">
+      <section className="bg-gradient-to-b from-amber-50/70 via-emerald-50/20 to-slate-50/60 border-b border-amber-200/80 py-6 sm:py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          <div className={`grid grid-cols-1 ${showAnnouncements ? 'lg:grid-cols-2' : ''} gap-6 lg:gap-8 items-start`}>
             
             {/* ---------------- LEFT: MENU PENGUMUMAN PENTING ---------------- */}
-            <div className="bg-white/80 backdrop-blur-xs rounded-3xl border border-amber-200/90 p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center justify-between pb-4 mb-5 border-b border-amber-100">
-                <div className="flex items-center gap-2.5">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-                  </span>
-                  <div>
-                    <h3 className="text-sm sm:text-base font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-600" />
-                      <span>Menu Pengumuman Penting</span>
-                    </h3>
-                    <p className="text-[11px] text-amber-800/80">Informasi dan edaran resmi madrasah</p>
+            {showAnnouncements && (
+              <div className="bg-white/85 backdrop-blur-xs rounded-3xl border border-amber-200/90 p-4 sm:p-6 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-4 mb-5 border-b border-amber-100">
+                  <div className="flex items-center gap-2.5">
+                    <span className="relative flex h-3 w-3 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                    </span>
+                    <div>
+                      <h3 className="text-xs sm:text-base font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Menu Pengumuman Penting</span>
+                      </h3>
+                      <p className="text-[11px] text-amber-800/80">Informasi dan edaran resmi madrasah</p>
+                    </div>
                   </div>
+                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                    {announcements.length} Informasi
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
-                  {announcements.length} Informasi
-                </span>
-              </div>
 
-              {announcements.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-400 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
-                  Belum ada pengumuman penting baru yang diterbitkan.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {announcements.slice(0, 3).map((ann) => (
-                    <div
-                      key={ann.id}
-                      onClick={() => setActiveAnnouncementModal(ann)}
-                      className="bg-amber-50/30 hover:bg-amber-50/80 rounded-2xl border border-amber-200/70 hover:border-amber-400 p-3.5 transition-all duration-200 flex flex-col sm:flex-row gap-3.5 cursor-pointer group shadow-2xs hover:shadow-sm"
-                    >
-                      {/* Photo / Image Display */}
-                      {ann.imageUrl ? (
-                        <div className="relative w-full sm:w-36 h-32 sm:h-28 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-amber-200/60">
-                          <img
-                            src={ann.imageUrl}
-                            alt={ann.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                          <span className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-rose-600 text-white font-bold text-[9px] rounded-md shadow-xs uppercase">
-                            Penting
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="w-full sm:w-36 h-28 rounded-xl bg-gradient-to-br from-emerald-800 to-emerald-950 p-2 shrink-0 flex flex-col items-center justify-center text-white text-center">
-                          <Sparkles className="w-6 h-6 text-amber-300 mb-1" />
-                          <span className="text-[10px] font-bold text-amber-200">MA PLUS MM</span>
-                        </div>
-                      )}
+                {announcements.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
+                    Belum ada pengumuman penting baru yang diterbitkan.
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[540px] overflow-y-auto pr-1">
+                    {announcements.map((ann) => (
+                      <div
+                        key={ann.id}
+                        onClick={() => setActiveAnnouncementModal(ann)}
+                        className="bg-amber-50/30 hover:bg-amber-50/80 rounded-2xl border border-amber-200/70 hover:border-amber-400 p-3.5 transition-all duration-200 flex flex-col sm:flex-row gap-3.5 cursor-pointer group shadow-2xs hover:shadow-sm"
+                      >
+                        {ann.imageUrl ? (
+                          <div className="relative w-full sm:w-36 h-36 sm:h-28 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-amber-200/60">
+                            <img
+                              src={ann.imageUrl}
+                              alt={ann.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                            <span className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-rose-600 text-white font-bold text-[9px] rounded-md shadow-xs uppercase">
+                              Penting
+                            </span>
+                          </div>
+                        ) : (
+                          <div
+                            className="w-full sm:w-36 h-28 rounded-xl p-2 shrink-0 flex flex-col items-center justify-center text-white text-center"
+                            style={{
+                              background: `linear-gradient(135deg, ${brandPrimary} 0%, #022c22 100%)`,
+                            }}
+                          >
+                            <Sparkles className="w-6 h-6 text-amber-300 mb-1" />
+                            <span className="text-[10px] font-bold text-amber-200 truncate max-w-full px-1">
+                              {siteSettings.portalName || 'MA PLUS MM'}
+                            </span>
+                          </div>
+                        )}
 
-                      <div className="flex-1 flex flex-col justify-between min-w-0">
-                        <div>
-                          <span className="text-[10px] font-medium text-slate-400 block mb-1">
-                            {ann.publishDate}
-                          </span>
-                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-amber-900 transition-colors line-clamp-2 mb-1 leading-snug">
-                            {ann.title}
-                          </h4>
-                          <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
-                            {ann.content}
-                          </p>
-                        </div>
+                        <div className="flex-1 flex flex-col justify-between min-w-0">
+                          <div>
+                            <span className="text-[10px] font-medium text-slate-400 block mb-1">
+                              {ann.publishDate}
+                            </span>
+                            <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-amber-900 transition-colors line-clamp-2 mb-1 leading-snug">
+                              {ann.title}
+                            </h4>
+                            <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
+                              {ann.content}
+                            </p>
+                          </div>
 
-                        <div className="mt-2.5 pt-2 border-t border-amber-200/40 flex items-center justify-between text-[11px] font-bold text-amber-800 group-hover:text-amber-950">
-                          <span>Lihat Rincian Pengumuman</span>
-                          <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" />
+                          <div className="mt-2.5 pt-2 border-t border-amber-200/40 flex items-center justify-between text-[11px] font-bold text-amber-800 group-hover:text-amber-950">
+                            <span>Lihat Rincian Pengumuman</span>
+                            <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ---------------- RIGHT: MENU PRESTASI MADRASAH (PHOTO & DESKRIPSI SINGKAT) ---------------- */}
-            <div className="bg-white/80 backdrop-blur-xs rounded-3xl border border-emerald-200/90 p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center justify-between pb-4 mb-5 border-b border-emerald-100">
-                <div className="flex items-center gap-2.5">
+            <div className="bg-white/85 backdrop-blur-xs rounded-3xl border border-emerald-200/90 p-4 sm:p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-4 mb-5 border-b border-emerald-100">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shadow-2xs shrink-0">
                     <Trophy className="w-4 h-4 text-amber-600" />
                   </div>
-                  <div>
-                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-base font-extrabold text-slate-900 uppercase tracking-wider flex flex-wrap items-center gap-1.5">
                       <span>Prestasi Madrasah</span>
                       <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                        Unggulan
+                        {madrasahAchievements.length} Prestasi
                       </span>
                     </h3>
                     <p className="text-[11px] text-emerald-800 font-medium">Dokumentasi foto & piagam kejuaraan santri</p>
@@ -360,7 +385,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
                 <button
                   onClick={() => setShowAchievementModal(true)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition-colors shadow-2xs cursor-pointer"
+                  style={{ backgroundColor: brandPrimary }}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl hover:opacity-90 text-white font-bold text-xs transition-all shadow-2xs cursor-pointer shrink-0"
                   title="Daftarkan Prestasi Santri"
                 >
                   <Award className="w-3.5 h-3.5 text-amber-300" />
@@ -373,22 +399,34 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   Belum ada prestasi madrasah yang dipublikasikan.
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {madrasahAchievements.slice(0, 3).map((ach) => (
+                <div className="space-y-4 max-h-[540px] overflow-y-auto pr-1">
+                  {madrasahAchievements.map((ach) => (
                     <div
                       key={ach.id}
                       onClick={() => setActiveMadrasahAchievementModal(ach)}
                       className="bg-emerald-50/20 hover:bg-emerald-50/70 rounded-2xl border border-emerald-200/70 hover:border-emerald-400 p-3.5 transition-all duration-200 flex flex-col sm:flex-row gap-3.5 cursor-pointer group shadow-2xs hover:shadow-sm"
                     >
                       {/* Photo Prestasi */}
-                      <div className="relative w-full sm:w-36 h-32 sm:h-28 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-emerald-200">
-                        <img
-                          src={ach.photoUrl}
-                          alt={ach.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
+                      <div className="relative w-full sm:w-36 h-36 sm:h-28 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-emerald-200">
+                        {ach.photoUrl ? (
+                          <img
+                            src={ach.photoUrl}
+                            alt={ach.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div
+                            className="w-full h-full flex flex-col items-center justify-center text-white"
+                            style={{
+                              background: `linear-gradient(135deg, ${brandPrimary} 0%, #022c22 100%)`,
+                            }}
+                          >
+                            <Trophy className="w-7 h-7 text-amber-300 mb-1" />
+                            <span className="text-[10px] font-bold text-amber-200">PRESTASI</span>
+                          </div>
+                        )}
                         <div className="absolute top-1.5 left-1.5">
-                          <span className="px-2 py-0.5 bg-amber-500/90 text-slate-950 font-bold text-[9px] rounded-md shadow-xs backdrop-blur-xs">
+                          <span className="px-2 py-0.5 bg-amber-500/95 text-slate-950 font-bold text-[9px] rounded-md shadow-xs backdrop-blur-xs">
                             {ach.category}
                           </span>
                         </div>
@@ -416,12 +454,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           </p>
                         </div>
 
-                        <div className="mt-2.5 pt-2 border-t border-emerald-200/40 flex items-center justify-between text-[11px] font-bold text-emerald-800 group-hover:text-emerald-950">
-                          <span className="truncate max-w-[180px] font-medium text-slate-500">
+                        <div className="mt-2.5 pt-2 border-t border-emerald-200/40 flex items-center justify-between gap-2 text-[11px] font-bold text-emerald-800 group-hover:text-emerald-950">
+                          <span className="truncate font-medium text-slate-500">
                             Peraih: <strong className="text-slate-800 font-semibold">{ach.recipient}</strong>
                           </span>
-                          <span className="inline-flex items-center gap-1 text-emerald-700 shrink-0">
-                            <span>Foto & Rincian</span>
+                          <span className="inline-flex items-center gap-1 shrink-0" style={{ color: brandPrimary }}>
+                            <span>Foto &amp; Rincian</span>
                             <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" />
                           </span>
                         </div>
@@ -539,30 +577,33 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-5 lg:gap-6">
             {filteredLinks.map((link) => {
               const category = categories.find((c) => c.id === link.categoryId);
+              const url = (link.targetUrl || '').trim();
               const isSpecialAction =
-                link.targetUrl === '#achievement-portal' ||
-                link.targetUrl === '#committee-contacts' ||
-                link.name.toLowerCase().includes('prestasi') ||
-                link.name.toLowerCase().includes('whatsapp');
+                url === '#achievement-portal' ||
+                url === '#daftarkan-prestasi' ||
+                url === '#committee-contacts' ||
+                url === '#hubungi-panitia' ||
+                url === '#ppdb-registration' ||
+                url === '#ppdb-section';
 
               return (
                 <div
                   key={link.id}
                   onClick={() => handleCardClick(link)}
-                  className="group relative bg-white rounded-3xl p-5 border border-slate-200/90 hover:border-emerald-500 hover:shadow-xl transition-all duration-200 flex flex-col items-center text-center cursor-pointer transform hover:-translate-y-1.5"
+                  className="group relative bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/90 hover:border-emerald-500 hover:shadow-xl transition-all duration-200 flex flex-col items-center text-center cursor-pointer transform hover:-translate-y-1.5"
                 >
                   {/* Category Pill Tag */}
                   {category && (
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 truncate max-w-full">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 sm:mb-3 truncate max-w-full">
                       {category.name}
                     </span>
                   )}
 
                   {/* High-Resolution Image / SVG Badge Container */}
-                  <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-2xl flex items-center justify-center mb-3.5 transition-transform duration-200 group-hover:scale-105 shadow-sm">
+                  <div className="w-16 h-16 sm:w-22 sm:h-22 rounded-2xl flex items-center justify-center mb-3 sm:mb-3.5 transition-transform duration-200 group-hover:scale-105 shadow-sm">
                     {link.iconType === 'image' || link.iconType === 'upload' ? (
                       <img
                         src={link.icon}
@@ -576,25 +617,28 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           background: `linear-gradient(135deg, ${brandPrimary} 0%, #047857 100%)`,
                         }}
                       >
-                        <IconRenderer name={link.icon} className="w-10 h-10 text-amber-300" />
+                        <IconRenderer name={link.icon} className="w-8 h-8 sm:w-10 sm:h-10 text-amber-300" />
                       </div>
                     )}
                   </div>
 
                   {/* Service Title */}
-                  <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 group-hover:text-emerald-700 transition-colors line-clamp-1 mb-1.5">
+                  <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 group-hover:text-emerald-700 transition-colors line-clamp-2 mb-1.5">
                     {link.name}
                   </h4>
 
                   {/* Short Description */}
                   {link.description && (
-                    <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed mb-4">
+                    <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed mb-3 sm:mb-4">
                       {link.description}
                     </p>
                   )}
 
                   {/* Action Button Footer */}
-                  <div className="mt-auto pt-2 w-full flex items-center justify-center text-[11px] font-bold text-emerald-700 group-hover:text-emerald-800">
+                  <div
+                    className="mt-auto pt-2 w-full flex items-center justify-center text-[11px] font-bold group-hover:opacity-85"
+                    style={{ color: brandPrimary }}
+                  >
                     <span>{isSpecialAction ? 'Buka Menu' : 'Buka Layanan'}</span>
                     <ExternalLink className="w-3.5 h-3.5 ml-1" />
                   </div>
@@ -610,11 +654,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-emerald-600" />
-                  <span>Formulir Pendaftaran & PPDB MA Plus MM</span>
+                  <Calendar className="w-5 h-5" style={{ color: brandPrimary }} />
+                  <span>Formulir Pendaftaran &amp; PPDB {siteSettings.institutionName || 'MA Plus MM'}</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Penerimaan peserta didik dan santri baru tahun ajaran 2026/2027.
+                  Jalur penerimaan peserta didik dan santri baru yang tersedia saat ini.
                 </p>
               </div>
             </div>
@@ -623,10 +667,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               {registrations.map((reg) => (
                 <div
                   key={reg.id}
-                  className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between"
+                  className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                    {reg.bannerUrl && (
+                      <div className="mb-4 rounded-2xl overflow-hidden border border-slate-100 h-40 bg-slate-100">
+                        <img
+                          src={reg.bannerUrl}
+                          alt={reg.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                       <span
                         className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                           reg.status === 'open'
@@ -649,12 +702,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </div>
 
                   <a
-                    href={reg.formUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={reg.status === 'open' ? reg.formUrl : '#'}
+                    target={reg.status === 'open' ? '_blank' : undefined}
+                    rel={reg.status === 'open' ? 'noreferrer' : undefined}
+                    onClick={(e) => {
+                      if (reg.status !== 'open') e.preventDefault();
+                    }}
+                    style={reg.status === 'open' ? { backgroundColor: brandPrimary } : undefined}
                     className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
                       reg.status === 'open'
-                        ? 'bg-emerald-700 text-white hover:bg-emerald-800 shadow-sm'
+                        ? 'text-white hover:opacity-90 shadow-sm'
                         : 'bg-slate-200 text-slate-500 cursor-not-allowed'
                     }`}
                   >
@@ -673,11 +730,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-emerald-600" />
-                  <span>Dokumen, Brosur & Panduan Resmi</span>
+                  <FileText className="w-5 h-5" style={{ color: brandPrimary }} />
+                  <span>Dokumen, Brosur &amp; Panduan Resmi</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Unduh berkas kurikulum, jadwal seleksi, dan brosur resmi MA Plus MM.
+                  Unduh berkas kurikulum, jadwal seleksi, dan brosur resmi.
                 </p>
               </div>
             </div>
@@ -697,7 +754,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </div>
                   <button
                     onClick={() => onDocumentDownload(doc)}
-                    className="shrink-0 p-2.5 text-emerald-700 hover:bg-emerald-50 rounded-xl border border-emerald-200 transition-colors cursor-pointer"
+                    style={{ color: brandPrimary, borderColor: `${brandPrimary}40` }}
+                    className="shrink-0 p-2.5 hover:bg-emerald-50 rounded-xl border transition-colors cursor-pointer"
                     title="Unduh Dokumen"
                   >
                     <Download className="w-4 h-4" />
@@ -757,42 +815,74 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
           {/* Social Media Column */}
           <div>
-            <h4 className="text-white font-bold text-sm mb-2">Saluran Resmi & Media Sosial</h4>
-            <div className="flex items-center gap-3">
-              {siteSettings.instagramUrl && (
-                <a
-                  href={siteSettings.instagramUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
-                  title="Instagram"
-                >
-                  <IconRenderer name="Instagram" className="w-4 h-4" />
-                </a>
-              )}
-              {siteSettings.youtubeUrl && (
-                <a
-                  href={siteSettings.youtubeUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
-                  title="YouTube"
-                >
-                  <IconRenderer name="Youtube" className="w-4 h-4" />
-                </a>
-              )}
-              {siteSettings.tiktokUrl && (
-                <a
-                  href={siteSettings.tiktokUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
-                  title="TikTok"
-                >
-                  <IconRenderer name="Video" className="w-4 h-4" />
-                </a>
-              )}
-            </div>
+            <h4 className="text-white font-bold text-sm mb-2">Saluran Resmi &amp; Media Sosial</h4>
+            {siteSettings.instagramUrl ||
+            siteSettings.facebookUrl ||
+            siteSettings.youtubeUrl ||
+            siteSettings.tiktokUrl ||
+            siteSettings.websiteUrl ? (
+              <div className="flex flex-wrap items-center gap-2.5">
+                {siteSettings.instagramUrl && (
+                  <a
+                    href={siteSettings.instagramUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
+                    title="Instagram"
+                  >
+                    <IconRenderer name="Instagram" className="w-4 h-4" />
+                  </a>
+                )}
+                {siteSettings.facebookUrl && (
+                  <a
+                    href={siteSettings.facebookUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
+                    title="Facebook"
+                  >
+                    <IconRenderer name="Share2" className="w-4 h-4" />
+                  </a>
+                )}
+                {siteSettings.youtubeUrl && (
+                  <a
+                    href={siteSettings.youtubeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
+                    title="YouTube"
+                  >
+                    <IconRenderer name="Youtube" className="w-4 h-4" />
+                  </a>
+                )}
+                {siteSettings.tiktokUrl && (
+                  <a
+                    href={siteSettings.tiktokUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
+                    title="TikTok"
+                  >
+                    <IconRenderer name="Video" className="w-4 h-4" />
+                  </a>
+                )}
+                {siteSettings.websiteUrl && (
+                  <a
+                    href={siteSettings.websiteUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
+                    title="Website Resmi"
+                  >
+                    <IconRenderer name="Globe" className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                Belum ada tautan media sosial yang ditambahkan oleh admin.
+              </p>
+            )}
 
             <div className="mt-5">
               <button
@@ -806,9 +896,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500">
-          <p>{siteSettings.copyrightText || `© ${new Date().getFullYear()} MA Plus Ma'hadul Muta'allimin.`}</p>
-          <p className="text-[11px]">One QR Code – One Portal – All Digital Services</p>
+        <div className="max-w-7xl mx-auto pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500 text-center sm:text-left">
+          <p>{siteSettings.copyrightText || `© ${new Date().getFullYear()} ${siteSettings.institutionName || "MA Plus Ma'hadul Muta'allimin"}.`}</p>
+          <p className="text-[11px]">{siteSettings.tagline || 'One QR Code – One Portal – All Digital Services'}</p>
         </div>
       </footer>
 

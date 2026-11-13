@@ -8,8 +8,6 @@ import {
   restoreDatabase,
   getLastSetupCredentials,
   clearLastSetupCredentials,
-  DEFAULT_COMMITTEE_CONTACTS,
-  DEFAULT_MADRASAH_ACHIEVEMENTS,
 } from './db.js';
 import {
   login,
@@ -41,6 +39,14 @@ import { getAllGasFiles } from './gasTemplates.js';
 import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../src/lib/brandAssets.js';
 
 export const apiRouter = express.Router();
+
+// Ensure zero HTTP/CDN caching across API routes so admin updates propagate immediately
+apiRouter.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 const routerJsonParser = express.json({ limit: '15mb' });
 apiRouter.use((req: Request, res: Response, next: NextFunction) => {
@@ -122,6 +128,10 @@ apiRouter.get('/public/portal', (req: Request, res: Response) => {
     .filter((a) => a.isActive)
     .sort((a, b) => a.order - b.order);
 
+  const activeCommitteeContacts = (db.COMMITTEE_CONTACTS || []).filter(
+    (c) => c.isAvailable !== false
+  );
+
   res.json({
     siteSettings: db.SITE_SETTINGS,
     categories: activeCategories,
@@ -129,7 +139,7 @@ apiRouter.get('/public/portal', (req: Request, res: Response) => {
     announcements: activeAnnouncements,
     registrations: activeRegistrations,
     documents: activeDocuments,
-    committeeContacts: db.COMMITTEE_CONTACTS || [],
+    committeeContacts: activeCommitteeContacts,
     achievementsCount: db.STUDENT_ACHIEVEMENTS?.length || 0,
     madrasahAchievements: activeMadrasahAchievements,
   });
@@ -595,9 +605,17 @@ apiRouter.post('/admin/links', requireAuth, (req: Request, res: Response) => {
     return;
   }
 
-  // Validate URL format
-  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.startsWith('mailto:') && !targetUrl.startsWith('tel:')) {
-    res.status(400).json({ error: 'URL harus diawali dengan http://, https://, tel:, atau mailto:' });
+  // Validate URL format (supports external URLs, contact schemes, relative paths, and internal portal anchors)
+  const trimmedUrl = targetUrl.trim();
+  if (
+    !trimmedUrl.startsWith('http://') &&
+    !trimmedUrl.startsWith('https://') &&
+    !trimmedUrl.startsWith('mailto:') &&
+    !trimmedUrl.startsWith('tel:') &&
+    !trimmedUrl.startsWith('#') &&
+    !trimmedUrl.startsWith('/')
+  ) {
+    res.status(400).json({ error: 'URL harus diawali dengan http://, https://, tel:, mailto:, /, atau #' });
     return;
   }
 
@@ -654,11 +672,19 @@ apiRouter.put('/admin/links/:id', requireAuth, (req: Request, res: Response) => 
   }
 
   if (targetUrl) {
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.startsWith('mailto:') && !targetUrl.startsWith('tel:')) {
-      res.status(400).json({ error: 'URL harus diawali dengan http://, https://, tel:, atau mailto:' });
+    const trimmedUrl = targetUrl.trim();
+    if (
+      !trimmedUrl.startsWith('http://') &&
+      !trimmedUrl.startsWith('https://') &&
+      !trimmedUrl.startsWith('mailto:') &&
+      !trimmedUrl.startsWith('tel:') &&
+      !trimmedUrl.startsWith('#') &&
+      !trimmedUrl.startsWith('/')
+    ) {
+      res.status(400).json({ error: 'URL harus diawali dengan http://, https://, tel:, mailto:, /, atau #' });
       return;
     }
-    link.targetUrl = targetUrl.trim();
+    link.targetUrl = trimmedUrl;
   }
 
   if (name !== undefined) link.name = name.trim();
@@ -1066,6 +1092,33 @@ apiRouter.post('/admin/restore', requireAuth, (req: Request, res: Response) => {
   res.json({ success: true, message: result.message });
 });
 
+apiRouter.post('/admin/reset-portal-data', requireAuth, (req: Request, res: Response) => {
+  const db = loadDatabase();
+  const user = (req as any).currentUser as User;
+
+  db.CATEGORIES = [];
+  db.LINKS = [];
+  db.REGISTRATIONS = [];
+  db.ANNOUNCEMENTS = [];
+  db.DOCUMENTS = [];
+  db.VISITORS = [];
+  db.LINK_CLICKS = [];
+  db.STUDENT_ACHIEVEMENTS = [];
+  db.COMMITTEE_CONTACTS = [];
+  db.MADRASAH_ACHIEVEMENTS = [];
+
+  addActivityLog(db, {
+    userId: user.id,
+    username: user.username,
+    action: 'RESET_PORTAL_DATA',
+    details: 'Seluruh konten portal & statistik dikosongkan oleh administrator (tanpa data dummy).',
+    ipAddress: req.ip || '127.0.0.1',
+  });
+
+  saveDatabase(db);
+  res.json({ success: true, message: 'Seluruh konten portal berhasil dikosongkan.' });
+});
+
 // --- GOOGLE APPS SCRIPT EXPORTER ---
 apiRouter.get('/admin/gas-files', requireAuth, (_req: Request, res: Response) => {
   const files = getAllGasFiles();
@@ -1194,12 +1247,13 @@ apiRouter.post('/admin/seed-starter', requireAuth, (req: Request, res: Response)
 // ----------------------------------------------------
 apiRouter.get('/public/committee-contacts', (_req: Request, res: Response) => {
   const db = loadDatabase();
-  res.json(db.COMMITTEE_CONTACTS || DEFAULT_COMMITTEE_CONTACTS);
+  const list = (db.COMMITTEE_CONTACTS || []).filter((c) => c.isAvailable !== false);
+  res.json(list);
 });
 
 apiRouter.get('/admin/committee-contacts', requireAuth, (_req: Request, res: Response) => {
   const db = loadDatabase();
-  res.json(db.COMMITTEE_CONTACTS || DEFAULT_COMMITTEE_CONTACTS);
+  res.json(db.COMMITTEE_CONTACTS || []);
 });
 
 apiRouter.post('/admin/committee-contacts', requireAuth, (req: Request, res: Response) => {
@@ -1210,7 +1264,7 @@ apiRouter.post('/admin/committee-contacts', requireAuth, (req: Request, res: Res
   }
 
   const db = loadDatabase();
-  if (!db.COMMITTEE_CONTACTS) db.COMMITTEE_CONTACTS = [...DEFAULT_COMMITTEE_CONTACTS];
+  if (!db.COMMITTEE_CONTACTS) db.COMMITTEE_CONTACTS = [];
 
   const contact: CommitteeContact = {
     id: generateUUID(),
@@ -1229,7 +1283,7 @@ apiRouter.post('/admin/committee-contacts', requireAuth, (req: Request, res: Res
 apiRouter.put('/admin/committee-contacts/:id', requireAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const db = loadDatabase();
-  if (!db.COMMITTEE_CONTACTS) db.COMMITTEE_CONTACTS = [...DEFAULT_COMMITTEE_CONTACTS];
+  if (!db.COMMITTEE_CONTACTS) db.COMMITTEE_CONTACTS = [];
 
   const c = db.COMMITTEE_CONTACTS.find((item) => item.id === id);
   if (!c) {
@@ -1245,7 +1299,7 @@ apiRouter.put('/admin/committee-contacts/:id', requireAuth, (req: Request, res: 
 apiRouter.delete('/admin/committee-contacts/:id', requireAuth, (req: Request, res: Response) => {
   const { id } = req.params;
   const db = loadDatabase();
-  if (!db.COMMITTEE_CONTACTS) db.COMMITTEE_CONTACTS = [...DEFAULT_COMMITTEE_CONTACTS];
+  if (!db.COMMITTEE_CONTACTS) db.COMMITTEE_CONTACTS = [];
 
   const index = db.COMMITTEE_CONTACTS.findIndex((item) => item.id === id);
   if (index === -1) {
@@ -1263,29 +1317,21 @@ apiRouter.delete('/admin/committee-contacts/:id', requireAuth, (req: Request, re
 // ----------------------------------------------------
 
 /**
- * Search applicant by name / registration number to verify previous registration
+ * Search previously submitted/registered applicants (real database records only, zero dummy data)
  */
 apiRouter.get('/public/achievements/search-applicant', (req: Request, res: Response) => {
   const query = ((req.query.query as string) || '').trim().toLowerCase();
   const db = loadDatabase();
 
-  // Search existing achievements or sample registered applicants
-  const registeredPool = [
-    { name: 'Muhammad Zaki Pratama', nisn: '0071234561', registeredProgram: 'PPDB MA Plus MM 2026/2027 (IPA Terpadu)' },
-    { name: 'Aisyah Humaira', nisn: '0071234562', registeredProgram: 'PPDB MA Plus MM 2026/2027 (Tahfidz Al-Qur\'an)' },
-    { name: 'Fatih Ar-Rasyid', nisn: '0071234563', registeredProgram: 'PPDB MA Plus MM 2026/2027 (Keagamaan)' },
-    { name: 'Nabila Syakira', nisn: '0071234564', registeredProgram: 'PPDB MA Plus MM 2026/2027 (IPS Terpadu)' },
-    { name: 'Ahmad Raihan Kamil', nisn: '0071234565', registeredProgram: 'PPDB MA Plus MM 2026/2027 (Riset Sains)' },
-  ];
+  const registeredPool: { name: string; nisn: string; registeredProgram: string }[] = [];
 
-  // Also include any students already registered in achievements
   if (db.STUDENT_ACHIEVEMENTS) {
     db.STUDENT_ACHIEVEMENTS.forEach((ach) => {
       if (!registeredPool.some((p) => p.name.toLowerCase() === ach.studentName.toLowerCase())) {
         registeredPool.push({
           name: ach.studentName,
           nisn: ach.registrationNumberOrNisn,
-          registeredProgram: 'Pendaftar Terverifikasi MA Plus MM',
+          registeredProgram: 'Pendaftar Terdata MA Plus MM',
         });
       }
     });
@@ -1458,7 +1504,7 @@ apiRouter.post('/admin/madrasah-achievements', requireAuth, (req: Request, res: 
     level: level.trim(),
     recipient: recipient.trim(),
     year: String(year).trim(),
-    photoUrl: photoUrl.trim() || 'https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?auto=format&fit=crop&w=800&q=80',
+    photoUrl: photoUrl.trim(),
     shortDescription: (shortDescription || '').trim(),
     order: Number(order) || (db.MADRASAH_ACHIEVEMENTS.length + 1),
     isActive: Boolean(isActive),
@@ -1675,42 +1721,22 @@ apiRouter.post('/admin/seed-ma-plus-mm', requireAuth, (req: Request, res: Respon
     },
   ];
 
-  // Set institution details specifically for MA PLUS MM
+  // Set institution details specifically for MA PLUS MM without dummy phone/announcement data
   db.SITE_SETTINGS.institutionName = "MA PLUS MA'HADUL MUTA'ALLIMIN";
   db.SITE_SETTINGS.portalName = 'PORTAL DIGITAL TERPADU';
   db.SITE_SETTINGS.tagline = 'One QR Code – One Portal – All Digital Services';
   db.SITE_SETTINGS.description = 'Pusat akses resmi seluruh layanan digital, pendaftaran PPDB, pendaftaran prestasi, dan saluran informasi resmi MA Plus MM.';
   db.SITE_SETTINGS.email = 'tumaplusmahadulmutaallimin@gmail.com';
-  db.SITE_SETTINGS.whatsappNumber = '+6281234567890';
   db.SITE_SETTINGS.announcementsEnabled = true;
-
-  // Add default committee contacts
-  db.COMMITTEE_CONTACTS = [...DEFAULT_COMMITTEE_CONTACTS];
-
-  // Add initial official announcement with prominent image banner
-  if (db.ANNOUNCEMENTS.length === 0) {
-    db.ANNOUNCEMENTS = [
-      {
-        id: generateUUID(),
-        title: 'Pengumuman Penting: Pembukaan PPDB & Seleksi Beasiswa Jalur Prestasi MA Plus MM',
-        content: `Assalamu'alaikum Warahmatullahi Wabarakatuh.\n\nTelah dibuka Penerimaan Peserta Didik & Santri Baru (PPDB) MA Plus Ma'hadul Muta'allimin Tahun Ajaran 2026/2027.\n\nBagi calon santri yang memiliki prestasi di bidang Tahfidz Al-Qur'an, Sains, Bahasa, Olahraga, atau Seni Budaya dapat mendaftarkan prestasinya secara daring melalui menu "Daftarkan Prestasi" dengan mengunggah dokumen piagam/sertifikat pendukung guna memperoleh prioritas beasiswa santri berprestasi.\n\nInformasi lebih lanjut dapat menghubungi kontak panitia pada menu Saluran WhatsApp Resmi.`,
-        imageUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=1000&auto=format&fit=crop',
-        publishDate: new Date().toISOString().split('T')[0],
-        status: 'published',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ];
-  }
 
   addActivityLog(db, {
     userId: user.id,
     username: user.username,
     action: 'SEED_MA_PLUS_MM',
-    details: 'Paket resmi layanan MA Plus MM berhasil diaktifkan dengan 8 ikon beresolusi tinggi.',
+    details: 'Template 8 ikon layanan MA Plus MM diaktifkan oleh admin.',
     ipAddress: req.ip || '127.0.0.1',
   });
 
   saveDatabase(db);
-  res.json({ success: true, message: 'Paket layanan resmi MA Plus MM berhasil diaktifkan.' });
+  res.json({ success: true, message: 'Template 8 ikon layanan resmi MA Plus MM berhasil diaktifkan.' });
 });

@@ -50,6 +50,14 @@ test('database: initializes 14 tables and adheres to no dummy data rule', () => 
   assert.equal(db.DOCUMENTS.length, 0, 'Documents must start empty');
   assert.equal(db.VISITORS.length, 0, 'Visitors must start empty');
   assert.equal(db.LINK_CLICKS.length, 0, 'Link clicks must start empty');
+  assert.equal(db.COMMITTEE_CONTACTS?.length, 0, 'Committee contacts must start empty');
+  assert.equal(db.MADRASAH_ACHIEVEMENTS?.length, 0, 'Madrasah achievements must start empty');
+  assert.equal(db.STUDENT_ACHIEVEMENTS?.length, 0, 'Student achievements must start empty');
+  assert.equal(db.SITE_SETTINGS.whatsappNumber, '', 'WhatsApp number must not contain dummy data');
+  assert.equal(db.SITE_SETTINGS.address, '', 'Address must not contain dummy data');
+  assert.equal(db.SITE_SETTINGS.instagramUrl, '', 'Instagram URL must not contain dummy data');
+  assert.equal(db.SITE_SETTINGS.youtubeUrl, '', 'YouTube URL must not contain dummy data');
+  assert.equal(db.SITE_SETTINGS.tiktokUrl, '', 'TikTok URL must not contain dummy data');
 
   // Verify health check
   const health = verifyDatabase();

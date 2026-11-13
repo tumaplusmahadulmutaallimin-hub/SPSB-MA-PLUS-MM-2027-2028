@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Category,
   ServiceLink,
@@ -22,6 +22,8 @@ import { Lock, X, Sparkles, ArrowRight } from 'lucide-react';
 import { AuthStatus } from './types';
 
 const SESSION_STORAGE_KEY = 'PORTAL_AUTH_SESSION_V1';
+const PORTAL_SYNC_STORAGE_KEY = 'PORTAL_LAST_SYNC_TS';
+const PORTAL_SYNC_CHANNEL = 'portal_digital_sync';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'public' | 'admin'>('public');
@@ -42,10 +44,13 @@ export default function App() {
   const [madrasahAchievements, setMadrasahAchievements] = useState<MadrasahAchievement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch public portal data
-  const loadPublicData = async () => {
+  // Fetch public portal data with cache bypass
+  const loadPublicData = useCallback(async () => {
     try {
-      const res = await fetch('/api/public/portal');
+      const res = await fetch(`/api/public/portal?ts=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       if (res.ok) {
         const data = await res.json();
         setSiteSettings(data.siteSettings);
@@ -62,7 +67,104 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Broadcast admin update to current state and any other open browser tabs
+  const notifyPortalUpdated = useCallback(() => {
+    loadPublicData();
+    try {
+      localStorage.setItem(PORTAL_SYNC_STORAGE_KEY, String(Date.now()));
+    } catch {
+      // ignore storage restrictions
+    }
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const ch = new BroadcastChannel(PORTAL_SYNC_CHANNEL);
+        ch.postMessage({ type: 'PORTAL_UPDATED', at: Date.now() });
+        ch.close();
+      } catch {
+        // ignore BroadcastChannel restrictions
+      }
+    }
+  }, [loadPublicData]);
+
+  // Dynamically sync browser title, meta description, and favicon with admin siteSettings
+  useEffect(() => {
+    if (!siteSettings) return;
+    const portalName = siteSettings.portalName || 'Portal Digital Terpadu';
+    const institutionName = siteSettings.institutionName || "MA PLUS MA'HADUL MUTA'ALLIMIN";
+    const fullTitle = `${portalName} - ${institutionName}`;
+    document.title = fullTitle;
+
+    const descMeta = document.querySelector('meta[name="description"]');
+    if (descMeta && siteSettings.description) {
+      descMeta.setAttribute('content', siteSettings.description);
+    }
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute('content', fullTitle);
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc && siteSettings.description) {
+      ogDesc.setAttribute('content', siteSettings.description);
+    }
+
+    const iconHref = siteSettings.faviconUrl || siteSettings.logoUrl;
+    if (iconHref) {
+      let linkEl = document.querySelector('link[rel="icon"]') as HTMLLinkElement | null;
+      if (!linkEl) {
+        linkEl = document.createElement('link');
+        linkEl.rel = 'icon';
+        document.head.appendChild(linkEl);
+      }
+      linkEl.href = iconHref;
+    }
+  }, [siteSettings]);
+
+  // Listen to cross-tab updates, window focus, visibility, and periodic refresh
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === PORTAL_SYNC_STORAGE_KEY) {
+        loadPublicData();
+      }
+    };
+    const handleFocus = () => {
+      loadPublicData();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadPublicData();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel(PORTAL_SYNC_CHANNEL);
+        channel.onmessage = () => {
+          loadPublicData();
+        };
+      } catch {
+        channel = null;
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && currentView === 'public') {
+        loadPublicData();
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (channel) channel.close();
+      window.clearInterval(intervalId);
+    };
+  }, [loadPublicData, currentView]);
 
   // Check existing session & setup info on mount
   useEffect(() => {
@@ -77,7 +179,7 @@ export default function App() {
     }).catch(() => {});
 
     // Check system auth status (whether personal admin has been set up)
-    fetch('/api/auth/status')
+    fetch('/api/auth/status', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data: AuthStatus) => {
         setAuthStatus(data);
@@ -92,6 +194,7 @@ export default function App() {
         if (parsed.expiresAt > Date.now()) {
           // Verify with server
           fetch('/api/auth/me', {
+            cache: 'no-store',
             headers: { Authorization: `Bearer ${parsed.token}` },
           })
             .then((res) => res.json())
@@ -117,7 +220,7 @@ export default function App() {
     }
 
     loadPublicData();
-  }, []);
+  }, [loadPublicData]);
 
   // Handle successful standard login
   const handleLoginSuccess = (newSession: AuthSession, mustChangePassword: boolean) => {
@@ -193,6 +296,13 @@ export default function App() {
 
     // Open target URL
     if (link.targetOpen === '_self') {
+      if (link.targetUrl.startsWith('#')) {
+        const el = document.getElementById(link.targetUrl.slice(1));
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+          return;
+        }
+      }
       window.location.href = link.targetUrl;
     } else {
       window.open(link.targetUrl, '_blank', 'noopener,noreferrer');
@@ -275,6 +385,7 @@ export default function App() {
         <AdminDashboard
           session={session}
           onLogout={handleLogout}
+          onDataUpdated={notifyPortalUpdated}
           onViewPublicPortal={() => {
             setCurrentView('public');
             loadPublicData();
@@ -285,7 +396,7 @@ export default function App() {
           siteSettings={
             siteSettings || {
               portalName: 'Portal Digital Terpadu',
-              institutionName: 'Lembaga Pendidikan & Dakwah Terpadu',
+              institutionName: "MA PLUS MA'HADUL MUTA'ALLIMIN",
               tagline: 'One QR Code – One Portal – All Digital Services',
               description: 'Pusat akses seluruh layanan digital resmi.',
               logoUrl: '',

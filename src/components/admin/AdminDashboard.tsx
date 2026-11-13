@@ -38,6 +38,8 @@ import {
   XCircle,
   Eye,
   Trophy,
+  Menu,
+  X,
 } from 'lucide-react';
 import {
   AuthSession,
@@ -61,6 +63,7 @@ interface AdminDashboardProps {
   session: AuthSession;
   onLogout: () => void;
   onViewPublicPortal: () => void;
+  onDataUpdated?: () => void;
 }
 
 type TabType =
@@ -86,9 +89,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   session,
   onLogout,
   onViewPublicPortal,
+  onDataUpdated,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -139,10 +144,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setFeedbackMessage(null), 4000);
   };
 
-  // Initial data loading
+  // Initial & synced data loading (cache: no-store)
   const loadAllData = async () => {
     setLoading(true);
     try {
+      const fetchOpts: RequestInit = { headers: authHeaders, cache: 'no-store' };
       const [
         dashRes,
         catRes,
@@ -159,20 +165,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         contactsRes,
         madrasahAchRes,
       ] = await Promise.all([
-        fetch('/api/admin/dashboard', { headers: authHeaders }),
-        fetch('/api/admin/categories', { headers: authHeaders }),
-        fetch('/api/admin/links', { headers: authHeaders }),
-        fetch('/api/admin/announcements', { headers: authHeaders }),
-        fetch('/api/admin/registrations', { headers: authHeaders }),
-        fetch('/api/admin/documents', { headers: authHeaders }),
-        fetch('/api/admin/settings', { headers: authHeaders }),
-        fetch('/api/admin/qr-settings', { headers: authHeaders }),
-        fetch('/api/admin/activity-logs', { headers: authHeaders }),
-        fetch('/api/admin/users', { headers: authHeaders }),
-        fetch('/api/admin/backups', { headers: authHeaders }),
-        fetch('/api/admin/achievements', { headers: authHeaders }),
-        fetch('/api/admin/committee-contacts', { headers: authHeaders }),
-        fetch('/api/admin/madrasah-achievements', { headers: authHeaders }),
+        fetch('/api/admin/dashboard', fetchOpts),
+        fetch('/api/admin/categories', fetchOpts),
+        fetch('/api/admin/links', fetchOpts),
+        fetch('/api/admin/announcements', fetchOpts),
+        fetch('/api/admin/registrations', fetchOpts),
+        fetch('/api/admin/documents', fetchOpts),
+        fetch('/api/admin/settings', fetchOpts),
+        fetch('/api/admin/qr-settings', fetchOpts),
+        fetch('/api/admin/activity-logs', fetchOpts),
+        fetch('/api/admin/users', fetchOpts),
+        fetch('/api/admin/backups', fetchOpts),
+        fetch('/api/admin/achievements', fetchOpts),
+        fetch('/api/admin/committee-contacts', fetchOpts),
+        fetch('/api/admin/madrasah-achievements', fetchOpts),
       ]);
 
       if (dashRes.ok) setDashboardStats(await dashRes.json());
@@ -197,6 +203,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Refresh admin data AND immediately notify public portal / other open tabs
+  const syncAfterChange = async () => {
+    await loadAllData();
+    onDataUpdated?.();
+  };
+
   useEffect(() => {
     loadAllData();
   }, []);
@@ -204,7 +216,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Fetch GAS files when tab is selected
   useEffect(() => {
     if (activeTab === 'gas_export') {
-      fetch('/api/admin/gas-files', { headers: authHeaders })
+      fetch('/api/admin/gas-files', { headers: authHeaders, cache: 'no-store' })
         .then((res) => res.json())
         .then((data) => {
           if (data.files) {
@@ -221,7 +233,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (activeTab === 'qrcode' && qrSettings) {
       const url = qrSettings.portalUrl || window.location.origin;
-      fetch(`/api/public/qr-image?url=${encodeURIComponent(url)}&dark=${encodeURIComponent(qrSettings.foregroundColor || '#065f46')}&light=${encodeURIComponent(qrSettings.backgroundColor || '#ffffff')}&size=360`)
+      fetch(
+        `/api/public/qr-image?url=${encodeURIComponent(url)}&dark=${encodeURIComponent(
+          qrSettings.foregroundColor || '#065f46'
+        )}&light=${encodeURIComponent(qrSettings.backgroundColor || '#ffffff')}&size=360`,
+        { cache: 'no-store' }
+      )
         .then((res) => res.json())
         .then((data) => {
           if (data.dataUrl) setAdminQrDataUrl(data.dataUrl);
@@ -255,7 +272,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       showNotification('success', `Kategori berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
       setEditingCategory(null);
-      loadAllData();
+      await syncAfterChange();
     } catch (err: any) {
       showNotification('error', err.message);
     }
@@ -277,7 +294,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return;
       }
       showNotification('success', `Kategori "${cat.name}" berhasil dihapus.`);
-      loadAllData();
+      await syncAfterChange();
     } catch (err: any) {
       showNotification('error', err.message);
     }
@@ -307,7 +324,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       showNotification('success', `Layanan berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
       setEditingLink(null);
-      loadAllData();
+      await syncAfterChange();
     } catch (err: any) {
       showNotification('error', err.message);
     }
@@ -322,7 +339,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', `Layanan "${link.name}" berhasil digandakan.`);
-        loadAllData();
+        await syncAfterChange();
       }
     } catch (err: any) {
       showNotification('error', err.message);
@@ -341,7 +358,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', `Layanan "${link.name}" berhasil dihapus.`);
-        loadAllData();
+        await syncAfterChange();
       }
     } catch (err: any) {
       showNotification('error', err.message);
@@ -360,8 +377,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         body: JSON.stringify(siteSettings),
       });
       if (res.ok) {
-        showNotification('success', 'Pengaturan identitas dan tampilan portal berhasil disimpan.');
-        loadAllData();
+        showNotification('success', 'Pengaturan identitas dan tampilan portal berhasil disimpan & disinkronkan.');
+        await syncAfterChange();
+      } else {
+        const data = await res.json();
+        showNotification('error', data.error || 'Gagal menyimpan pengaturan.');
       }
     } catch (err: any) {
       showNotification('error', err.message);
@@ -381,65 +401,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', 'Pengaturan QR Code dan Poster berhasil diperbarui.');
-        // Refresh preview
         const url = qrSettings.portalUrl || window.location.origin;
-        const qrRes = await fetch(`/api/public/qr-image?url=${encodeURIComponent(url)}&dark=${encodeURIComponent(qrSettings.foregroundColor || '#065f46')}&light=${encodeURIComponent(qrSettings.backgroundColor || '#ffffff')}&size=360`);
+        const qrRes = await fetch(
+          `/api/public/qr-image?url=${encodeURIComponent(url)}&dark=${encodeURIComponent(
+            qrSettings.foregroundColor || '#065f46'
+          )}&light=${encodeURIComponent(qrSettings.backgroundColor || '#ffffff')}&size=360`,
+          { cache: 'no-store' }
+        );
         const qrData = await qrRes.json();
         if (qrData.dataUrl) setAdminQrDataUrl(qrData.dataUrl);
+        await syncAfterChange();
       }
     } catch (err: any) {
       showNotification('error', err.message);
-    }
-  };
-
-  // Seed initial starter pack
-  const handleSeedStarter = async () => {
-    const confirmed = window.confirm(
-      'Apakah Anda ingin memasukkan paket layanan contoh awal (Media Sosial, Akademik, Raport)? Perhatian: Database saat ini kosong sesuai standar keamanan.'
-    );
-    if (!confirmed) return;
-
-    try {
-      const res = await fetch('/api/admin/seed-starter', {
-        method: 'POST',
-        headers: authHeaders,
-      });
-      if (res.ok) {
-        showNotification('success', 'Paket layanan awal berhasil ditambahkan ke database.');
-        loadAllData();
-      }
-    } catch (err: any) {
-      showNotification('error', err.message);
-    }
-  };
-
-  // Seed Official MA PLUS MM Pack (8 Authentic Badges)
-  const handleSeedMaPlusMm = async () => {
-    const confirmed = window.confirm(
-      'Aktifkan Paket Resmi MA PLUS MM (8 Layanan: Formulir PPDB, Instagram, YouTube, TikTok, Google Maps, Daftarkan Prestasi, Portal Web, Saluran WhatsApp) dengan logo otentik resolusi tinggi?'
-    );
-    if (!confirmed) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin/seed-ma-plus-mm', {
-        method: 'POST',
-        headers: authHeaders,
-      });
-      if (res.ok) {
-        showNotification(
-          'success',
-          '8 Layanan Resmi MA PLUS MM dengan logo gambar otentik berhasil diaktifkan!'
-        );
-        loadAllData();
-      } else {
-        const data = await res.json();
-        showNotification('error', data.error || 'Gagal mengaktifkan paket layanan MA Plus MM.');
-      }
-    } catch (err: any) {
-      showNotification('error', err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -456,7 +430,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           'success',
           `Status prestasi berhasil diubah menjadi: ${status === 'verified' ? 'Terverifikasi' : 'Ditolak'}`
         );
-        loadAllData();
+        await syncAfterChange();
       } else {
         const data = await res.json();
         showNotification('error', data.error || 'Gagal memperbarui status prestasi.');
@@ -476,7 +450,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', 'Data prestasi berhasil dihapus.');
-        loadAllData();
+        await syncAfterChange();
       }
     } catch (err: any) {
       showNotification('error', err.message);
@@ -507,7 +481,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           `Prestasi Madrasah berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
         );
         setEditingMadrasahAchievement(null);
-        loadAllData();
+        await syncAfterChange();
       } else {
         const data = await res.json();
         showNotification('error', data.error || 'Gagal menyimpan prestasi madrasah.');
@@ -527,7 +501,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', 'Prestasi madrasah berhasil dihapus.');
-        loadAllData();
+        await syncAfterChange();
       }
     } catch (err: any) {
       showNotification('error', err.message);
@@ -553,7 +527,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (res.ok) {
         showNotification('success', `Kontak panitia berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
         setEditingContact(null);
-        loadAllData();
+        await syncAfterChange();
       } else {
         const data = await res.json();
         showNotification('error', data.error || 'Gagal menyimpan kontak panitia.');
@@ -573,7 +547,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', 'Kontak panitia berhasil dihapus.');
-        loadAllData();
+        await syncAfterChange();
       }
     } catch (err: any) {
       showNotification('error', err.message);
@@ -590,8 +564,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', 'Cadangan database DB_PORTAL_DIGITAL berhasil dibuat.');
-        loadAllData();
+        await loadAllData();
       }
+    } catch (err: any) {
+      showNotification('error', err.message);
+    }
+  };
+
+  // Authenticated JSON Database Export
+  const handleExportDatabaseJson = async () => {
+    try {
+      const res = await fetch('/api/admin/export-database', { headers: authHeaders, cache: 'no-store' });
+      if (!res.ok) {
+        showNotification('error', 'Gagal mengekspor database JSON.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `DB_PORTAL_DIGITAL_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showNotification('success', 'File JSON database berhasil diunduh.');
+    } catch (err: any) {
+      showNotification('error', err.message);
+    }
+  };
+
+  // Reset all portal content & stats cleanly (zero dummy data)
+  const handleResetPortalData = async () => {
+    const confirmed = window.confirm(
+      'PERINGATAN: Ini akan mengosongkan seluruh konten portal (layanan, kategori, pengumuman, pendaftaran, dokumen, prestasi, kontak panitia, dan statistik). Akun admin tetap aman. Lanjutkan?'
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch('/api/admin/reset-portal-data', {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showNotification('error', data.error || 'Gagal mengosongkan konten portal.');
+        return;
+      }
+      showNotification('success', 'Seluruh konten portal berhasil dikosongkan.');
+      await syncAfterChange();
     } catch (err: any) {
       showNotification('error', err.message);
     }
@@ -622,7 +643,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showNotification('success', 'Database berhasil dipulihkan.');
       setShowRestoreModal(false);
       setRestoreJson('');
-      loadAllData();
+      await syncAfterChange();
     } catch (err: any) {
       showNotification('error', err.message);
     }
@@ -641,11 +662,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row text-slate-800">
+    <div className="min-h-screen bg-slate-100 flex flex-col lg:flex-row text-slate-800 relative">
+      {/* Mobile Sidebar Backdrop */}
+      {mobileNavOpen && (
+        <div
+          onClick={() => setMobileNavOpen(false)}
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden no-print"
+        />
+      )}
+
       {/* ----------------- SIDEBAR NAVIGATION ----------------- */}
       <aside
-        className={`${
-          isSidebarOpen ? 'w-64' : 'w-20'
+        className={`fixed inset-y-0 left-0 z-40 lg:static lg:translate-x-0 ${
+          mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${
+          isSidebarOpen ? 'w-64' : 'w-64 lg:w-20'
         } shrink-0 bg-slate-900 text-slate-300 flex flex-col transition-all duration-200 border-r border-slate-800 no-print`}
       >
         {/* Brand Header */}
@@ -654,7 +685,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 shadow-xs">
               <Sparkles className="w-4 h-4 text-amber-300" />
             </div>
-            {isSidebarOpen && (
+            {(isSidebarOpen || mobileNavOpen) && (
               <span className="font-bold text-xs text-white uppercase tracking-wider truncate">
                 Admin Portal
               </span>
@@ -662,10 +693,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-1 rounded text-slate-400 hover:text-white cursor-pointer"
+            className="hidden lg:inline-flex p-1 rounded text-slate-400 hover:text-white cursor-pointer"
             title="Ciutkan Sidebar"
           >
             <ChevronDown className={`w-4 h-4 transform ${isSidebarOpen ? '-rotate-90' : 'rotate-90'}`} />
+          </button>
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            className="lg:hidden p-1 rounded text-slate-400 hover:text-white cursor-pointer"
+            title="Tutup Menu"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -695,7 +733,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id as TabType)}
+                onClick={() => {
+                  setActiveTab(item.id as TabType);
+                  setMobileNavOpen(false);
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium transition-colors cursor-pointer text-left ${
                   isActive
                     ? 'bg-emerald-600 text-white shadow-xs font-semibold'
@@ -704,7 +745,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 title={item.label}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                {isSidebarOpen && <span className="truncate">{item.label}</span>}
+                {(isSidebarOpen || mobileNavOpen) && <span className="truncate">{item.label}</span>}
               </button>
             );
           })}
@@ -712,7 +753,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* User Info & Logout Footer */}
         <div className="p-3 border-t border-slate-800 text-xs">
-          {isSidebarOpen && (
+          {(isSidebarOpen || mobileNavOpen) && (
             <div className="mb-2 px-2">
               <p className="font-bold text-white truncate">{session.user.fullName}</p>
               <p className="text-[11px] text-emerald-400 capitalize truncate">@{session.user.username} ({session.user.role})</p>
@@ -723,7 +764,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
-            {isSidebarOpen && <span>Keluar</span>}
+            {(isSidebarOpen || mobileNavOpen) && <span>Keluar</span>}
           </button>
         </div>
       </aside>
@@ -731,9 +772,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* ----------------- MAIN CONTENT AREA ----------------- */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between no-print">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 capitalize">
+        <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-8 flex items-center justify-between gap-3 no-print sticky top-0 z-20">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="lg:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:bg-slate-100 cursor-pointer shrink-0"
+              title="Buka Menu Admin"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h2 className="text-sm sm:text-lg font-bold text-slate-900 capitalize truncate">
               {activeTab === 'overview' && 'Ringkasan Dashboard'}
               {activeTab === 'identity' && 'Identitas & Tampilan Portal'}
               {activeTab === 'home_settings' && 'Pengaturan Bagian Halaman Utama'}
@@ -752,16 +800,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {activeTab === 'logs' && 'Log Audit Aktivitas'}
               {activeTab === 'gas_export' && 'Ekspor Kode Google Apps Script (DB_PORTAL_DIGITAL)'}
             </h2>
-            {loading && <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin" />}
+            {loading && <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin shrink-0" />}
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <button
               onClick={onViewPublicPortal}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Lihat Halaman Publik</span>
+              <span className="hidden sm:inline">Lihat Halaman Publik</span>
+              <span className="sm:hidden">Publik</span>
             </button>
           </div>
         </header>
@@ -828,34 +877,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Special MA PLUS MM Official Services Setup Banner */}
-              <div className="bg-gradient-to-r from-emerald-900 to-emerald-950 rounded-2xl p-6 text-white border border-emerald-800 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-6 h-6 text-amber-300" />
-                  </div>
+              {/* Quick Content Actions */}
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-[10px] uppercase tracking-wider">
-                        Paket Resmi Lembaga
-                      </span>
-                      <h4 className="font-bold text-sm text-white">
-                        Inisialisasi 8 Layanan Resmi MA PLUS MM
-                      </h4>
-                    </div>
-                    <p className="text-xs text-emerald-200/90 leading-relaxed mt-1">
-                      Mengisi portal dengan 8 ikon berlogo gambar otentik: <strong>Formulir PPDB, Instagram, YouTube, TikTok, Google Maps, Daftarkan Prestasi, Portal Web,</strong> dan <strong>Saluran WhatsApp Resmi</strong>.
+                    <h4 className="font-bold text-sm text-slate-900">Aksi Cepat Pengelolaan Konten</h4>
+                    <p className="text-xs text-slate-500">
+                      Setiap perubahan yang disimpan di sini akan langsung tampil di halaman publik secara real-time.
                     </p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <button
-                    onClick={handleSeedMaPlusMm}
-                    className="w-full md:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+                    onClick={() => setActiveTab('links')}
+                    className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
                   >
-                    <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                    <span>Aktifkan 8 Layanan MA PLUS MM</span>
+                    <Grid className="w-4 h-4 text-emerald-700 mb-1.5" />
+                    <p className="font-bold text-slate-900">Ikon Layanan</p>
+                    <p className="text-[11px] text-slate-500">{links.length} layanan</p>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('announcements')}
+                    className="p-3 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 text-left transition-colors cursor-pointer"
+                  >
+                    <Bell className="w-4 h-4 text-amber-600 mb-1.5" />
+                    <p className="font-bold text-slate-900">Pengumuman</p>
+                    <p className="text-[11px] text-slate-500">{announcements.length} item</p>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('achievements')}
+                    className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
+                  >
+                    <Trophy className="w-4 h-4 text-amber-600 mb-1.5" />
+                    <p className="font-bold text-slate-900">Prestasi Madrasah</p>
+                    <p className="text-[11px] text-slate-500">{madrasahAchievements.length} galeri</p>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('contacts')}
+                    className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
+                  >
+                    <Phone className="w-4 h-4 text-emerald-700 mb-1.5" />
+                    <p className="font-bold text-slate-900">Kontak Panitia</p>
+                    <p className="text-[11px] text-slate-500">{committeeContacts.length} kontak</p>
                   </button>
                 </div>
               </div>
@@ -1069,6 +1132,205 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="text"
                     value={siteSettings.address}
                     onChange={(e) => setSiteSettings({ ...siteSettings, address: e.target.value })}
+                    placeholder="Contoh: Jl. Raya Madrasah No. ..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                  />
+                </div>
+
+                {/* Branding Visual: Logo, Favicon & Hero Banner */}
+                <div className="pt-2 border-t border-slate-100 space-y-3">
+                  <h4 className="font-bold text-slate-900">Logo, Favicon &amp; Banner Hero</h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <label className="block font-semibold text-slate-700">Logo Lembaga</label>
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg cursor-pointer">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Unggah Logo</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => setSiteSettings({ ...siteSettings, logoUrl: reader.result as string });
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                        {siteSettings.logoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setSiteSettings({ ...siteSettings, logoUrl: '' })}
+                            className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg font-semibold cursor-pointer"
+                          >
+                            Hapus
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={siteSettings.logoUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, logoUrl: e.target.value })}
+                        placeholder="URL gambar logo atau data:image/..."
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-[11px]"
+                      />
+                      {siteSettings.logoUrl && (
+                        <img src={siteSettings.logoUrl} alt="Logo" className="h-12 w-12 object-contain rounded-lg border bg-white p-1" />
+                      )}
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <label className="block font-semibold text-slate-700">Favicon Tab Browser</label>
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg cursor-pointer">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Unggah Favicon</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => setSiteSettings({ ...siteSettings, faviconUrl: reader.result as string });
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                        {siteSettings.faviconUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setSiteSettings({ ...siteSettings, faviconUrl: '' })}
+                            className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg font-semibold cursor-pointer"
+                          >
+                            Hapus
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={siteSettings.faviconUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, faviconUrl: e.target.value })}
+                        placeholder="URL favicon atau data:image/..."
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-[11px]"
+                      />
+                      {siteSettings.faviconUrl && (
+                        <img src={siteSettings.faviconUrl} alt="Favicon" className="h-8 w-8 object-contain rounded border bg-white p-0.5" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <label className="block font-semibold text-slate-700">Gambar Latar Hero Banner (Opsional)</label>
+                    <div className="flex items-center gap-2">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg cursor-pointer">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Unggah Gambar Banner</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = () => setSiteSettings({ ...siteSettings, bannerUrl: reader.result as string });
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      {siteSettings.bannerUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setSiteSettings({ ...siteSettings, bannerUrl: '' })}
+                          className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg font-semibold cursor-pointer"
+                        >
+                          Hapus Banner
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={siteSettings.bannerUrl || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, bannerUrl: e.target.value })}
+                      placeholder="https://... atau data:image/..."
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-[11px]"
+                    />
+                    {siteSettings.bannerUrl && (
+                      <img src={siteSettings.bannerUrl} alt="Hero Banner" className="w-full h-24 object-cover rounded-lg border" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Official Social Media & Website Links in Footer */}
+                <div className="pt-2 border-t border-slate-100 space-y-3">
+                  <h4 className="font-bold text-slate-900">Tautan Media Sosial &amp; Website Resmi (Footer Publik)</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Instagram URL</label>
+                      <input
+                        type="text"
+                        value={siteSettings.instagramUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, instagramUrl: e.target.value })}
+                        placeholder="https://instagram.com/..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Facebook URL</label>
+                      <input
+                        type="text"
+                        value={siteSettings.facebookUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, facebookUrl: e.target.value })}
+                        placeholder="https://facebook.com/..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">YouTube URL</label>
+                      <input
+                        type="text"
+                        value={siteSettings.youtubeUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, youtubeUrl: e.target.value })}
+                        placeholder="https://youtube.com/@..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">TikTok URL</label>
+                      <input
+                        type="text"
+                        value={siteSettings.tiktokUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, tiktokUrl: e.target.value })}
+                        placeholder="https://tiktok.com/@..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-[11px]"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block font-semibold text-slate-700 mb-1">Website Utama Lembaga</label>
+                      <input
+                        type="text"
+                        value={siteSettings.websiteUrl || ''}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, websiteUrl: e.target.value })}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-[11px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Teks Hak Cipta (Footer Copyright)</label>
+                  <input
+                    type="text"
+                    value={siteSettings.copyrightText || ''}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, copyrightText: e.target.value })}
+                    placeholder="© 2026 MA Plus Ma'hadul Muta'allimin."
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
                   />
                 </div>
@@ -1090,7 +1352,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs max-w-2xl">
               <h3 className="text-base font-bold text-slate-900 mb-1">Pengaturan Tampilan Halaman Utama</h3>
               <p className="text-xs text-slate-500 mb-6">
-                Aktifkan atau nonaktifkan modul yang ingin ditampilkan kepada pengunjung.
+                Aktifkan atau nonaktifkan modul yang ingin ditampilkan kepada pengunjung. Perubahan langsung diterapkan ke halaman publik.
               </p>
 
               <div className="space-y-4">
@@ -1098,7 +1360,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   { key: 'heroEnabled', label: 'Tampilkan Hero Section & Banner Utama' },
                   { key: 'searchEnabled', label: 'Tampilkan Kolom Pencarian Layanan' },
                   { key: 'categoriesEnabled', label: 'Tampilkan Tab Navigasi Kategori' },
-                  { key: 'announcementsEnabled', label: 'Tampilkan Pengumuman Berjalan' },
+                  { key: 'announcementsEnabled', label: 'Tampilkan Menu Pengumuman Penting' },
                   { key: 'registrationsEnabled', label: 'Tampilkan Pendaftaran / PPDB' },
                   { key: 'documentsEnabled', label: 'Tampilkan Dokumen Unduhan' },
                 ].map((item) => {
@@ -1112,14 +1374,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <input
                         type="checkbox"
                         checked={Boolean(val)}
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const updated = { ...siteSettings, [item.key]: e.target.checked };
                           setSiteSettings(updated);
-                          fetch('/api/admin/settings', {
-                            method: 'PUT',
-                            headers: authHeaders,
-                            body: JSON.stringify(updated),
-                          });
+                          try {
+                            const res = await fetch('/api/admin/settings', {
+                              method: 'PUT',
+                              headers: authHeaders,
+                              body: JSON.stringify(updated),
+                            });
+                            if (res.ok) {
+                              showNotification('success', `"${item.label}" diperbarui dan langsung disinkronkan.`);
+                              await syncAfterChange();
+                            } else {
+                              showNotification('error', 'Gagal menyimpan perubahan pengaturan.');
+                            }
+                          } catch (err: any) {
+                            showNotification('error', err.message || 'Kesalahan jaringan.');
+                          }
                         }}
                         className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
                       />
@@ -1133,21 +1405,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 4: SERVICE LINKS CRUD */}
           {activeTab === 'links' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Koleksi Ikon Layanan Digital</h3>
                   <p className="text-xs text-slate-500">
                     Setiap ikon terhubung ke URL tujuan dan dapat diurutkan serta dikelompokkan.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleSeedMaPlusMm}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold rounded-xl shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Paket 8 Layanan MA PLUS MM</span>
-                  </button>
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() =>
                       setEditingLink({
@@ -1417,11 +1682,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col"
                       >
                         <div className="relative h-40 bg-slate-100 border-b border-slate-100">
-                          <img
-                            src={item.photoUrl}
-                            alt={item.title}
-                            className="w-full h-full object-cover"
-                          />
+                          {item.photoUrl ? (
+                            <img
+                              src={item.photoUrl}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-emerald-800 to-emerald-950 flex flex-col items-center justify-center text-white">
+                              <Trophy className="w-8 h-8 text-amber-300 mb-1" />
+                              <span className="text-[10px] font-bold text-amber-200">Tanpa Foto</span>
+                            </div>
+                          )}
                           <div className="absolute top-2 left-2 flex items-center gap-1.5">
                             <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-bold shadow-xs">
                               {item.category}
@@ -1782,6 +2054,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div>
+                    <label className="block font-semibold text-slate-700 mb-1">URL Portal Utama (Opsional)</label>
+                    <input
+                      type="text"
+                      value={qrSettings.portalUrl || ''}
+                      onChange={(e) => setQrSettings({ ...qrSettings, portalUrl: e.target.value })}
+                      placeholder={window.location.origin}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-[11px]"
+                    />
+                  </div>
+
+                  <div>
                     <label className="block font-semibold text-slate-700 mb-1">Judul Poster</label>
                     <input
                       type="text"
@@ -1801,11 +2084,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                   </div>
 
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Catatan Kaki Poster</label>
+                    <input
+                      type="text"
+                      value={qrSettings.posterFooter || ''}
+                      onChange={(e) => setQrSettings({ ...qrSettings, posterFooter: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                    />
+                  </div>
+
                   <button
                     type="submit"
                     className="w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow-sm cursor-pointer"
                   >
-                    Simpan & Perbarui Tampilan QR
+                    Simpan &amp; Perbarui Tampilan QR
                   </button>
                 </form>
               </div>
@@ -1856,15 +2149,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 14: BACKUP & RESTORE */}
           {activeTab === 'backup' && (
             <div className="space-y-6 max-w-3xl">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between gap-4 mb-6">
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
-                    <h3 className="text-base font-bold text-slate-900">Cadangan & Pemulihan Database</h3>
+                    <h3 className="text-base font-bold text-slate-900">Cadangan &amp; Pemulihan Database</h3>
                     <p className="text-xs text-slate-500">
                       Amankan database DB_PORTAL_DIGITAL atau pulihkan dari file JSON cadangan.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={handleTriggerBackup}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer"
@@ -1872,14 +2165,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <Database className="w-3.5 h-3.5" />
                       <span>Buat Backup Sekarang</span>
                     </button>
-                    <a
-                      href="/api/admin/export-database"
-                      download
+                    <button
+                      type="button"
+                      onClick={handleExportDatabaseJson}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Unduh File JSON</span>
-                    </a>
+                    </button>
                   </div>
                 </div>
 
@@ -1890,14 +2183,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <p className="text-slate-400 py-4 text-center">Belum ada riwayat backup.</p>
                     ) : (
                       backupLogs.map((b) => (
-                        <div key={b.id} className="py-2.5 flex items-center justify-between">
-                          <div>
-                            <p className="font-semibold text-slate-800">{b.fileName}</p>
+                        <div key={b.id} className="py-2.5 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 truncate">{b.fileName}</p>
                             <p className="text-[11px] text-slate-500">
                               Oleh {b.createdBy} • {(b.sizeBytes / 1024).toFixed(1)} KB
                             </p>
                           </div>
-                          <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold">
+                          <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold shrink-0">
                             {b.status}
                           </span>
                         </div>
@@ -1906,13 +2199,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-100">
+                <div className="mt-6 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3">
                   <button
                     onClick={() => setShowRestoreModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 border border-amber-300 text-amber-800 hover:bg-amber-50 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Pulihkan Database dari Teks JSON Cadangan</span>
+                  </button>
+                  <button
+                    onClick={handleResetPortalData}
                     className="inline-flex items-center gap-1.5 px-4 py-2 border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold rounded-xl transition-colors cursor-pointer"
                   >
-                    <Upload className="w-3.5 h-3.5 text-rose-600" />
-                    <span>Pulihkan Database dari Teks JSON Cadangan</span>
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Kosongkan Semua Konten Portal</span>
                   </button>
                 </div>
               </div>
@@ -2018,11 +2318,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 8: ANNOUNCEMENTS */}
           {activeTab === 'announcements' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Manajemen Pengumuman</h3>
                   <p className="text-xs text-slate-500">
-                    Pengumuman resmi yang tampil di banner publik saat status Dipublikasikan.
+                    Pengumuman resmi yang tampil di Menu Pengumuman Penting saat status Dipublikasikan.
                   </p>
                 </div>
                 <button
@@ -2030,11 +2330,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     setEditingAnnouncement({
                       title: '',
                       content: '',
+                      imageUrl: '',
                       publishDate: new Date().toISOString().split('T')[0],
                       status: 'published',
                     })
                   }
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer self-start sm:self-auto"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Tambah Pengumuman</span>
@@ -2048,32 +2349,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 ) : (
                   announcements.map((ann) => (
-                    <div key={ann.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                              ann.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            {ann.status === 'published' ? 'Dipublikasikan' : 'Draft'}
-                          </span>
-                          <span className="text-[11px] text-slate-400">{ann.publishDate}</span>
+                    <div key={ann.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
+                        {ann.imageUrl && (
+                          <img
+                            src={ann.imageUrl}
+                            alt={ann.title}
+                            className="w-16 h-16 rounded-xl object-cover border border-slate-200 shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                ann.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {ann.status === 'published' ? 'Dipublikasikan' : 'Draft'}
+                            </span>
+                            <span className="text-[11px] text-slate-400">{ann.publishDate}</span>
+                          </div>
+                          <h4 className="font-bold text-sm text-slate-900 mb-1">{ann.title}</h4>
+                          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{ann.content}</p>
                         </div>
-                        <h4 className="font-bold text-sm text-slate-900 mb-1">{ann.title}</h4>
-                        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{ann.content}</p>
                       </div>
-                      <button
-                        onClick={async () => {
-                          if (window.confirm('Hapus pengumuman ini?')) {
-                            await fetch(`/api/admin/announcements/${ann.id}`, { method: 'DELETE', headers: authHeaders });
-                            loadAllData();
-                          }
-                        }}
-                        className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer shrink-0"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-start">
+                        <button
+                          onClick={() => setEditingAnnouncement(ann)}
+                          className="p-2 text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
+                          title="Edit Pengumuman"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm('Hapus pengumuman ini?')) {
+                              const res = await fetch(`/api/admin/announcements/${ann.id}`, {
+                                method: 'DELETE',
+                                headers: authHeaders,
+                              });
+                              if (res.ok) {
+                                showNotification('success', 'Pengumuman berhasil dihapus.');
+                                await syncAfterChange();
+                              }
+                            }
+                          }}
+                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                          title="Hapus Pengumuman"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -2084,9 +2410,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 7: REGISTRATIONS */}
           {activeTab === 'registrations' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Manajemen Pendaftaran & PPDB</h3>
+                  <h3 className="text-base font-bold text-slate-900">Manajemen Pendaftaran &amp; PPDB</h3>
                   <p className="text-xs text-slate-500">
                     Hubungkan ke formulir pendaftaran (seperti Google Forms atau sistem internal).
                   </p>
@@ -2097,13 +2423,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       title: '',
                       description: '',
                       formUrl: 'https://',
+                      bannerUrl: '',
                       status: 'open',
                       startDate: '',
                       endDate: '',
                       isActive: true,
                     })
                   }
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer self-start sm:self-auto"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Tambah Pendaftaran</span>
@@ -2117,25 +2444,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 ) : (
                   registrations.map((reg) => (
-                    <div key={reg.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-4">
-                      <div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${reg.status === 'open' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
-                          {reg.status === 'open' ? 'Buka' : 'Tutup'}
-                        </span>
+                    <div key={reg.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${reg.status === 'open' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
+                            {reg.status === 'open' ? 'Buka' : 'Tutup'}
+                          </span>
+                          {!reg.isActive && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                              Disembunyikan
+                            </span>
+                          )}
+                          {reg.startDate && (
+                            <span className="text-[11px] text-slate-400">
+                              {reg.startDate} s/d {reg.endDate || 'Selesai'}
+                            </span>
+                          )}
+                        </div>
                         <h4 className="font-bold text-sm text-slate-900 mt-1">{reg.title}</h4>
-                        <p className="text-xs text-slate-500 line-clamp-1">{reg.formUrl}</p>
+                        <p className="text-xs text-slate-500 truncate">{reg.formUrl}</p>
                       </div>
-                      <button
-                        onClick={async () => {
-                          if (window.confirm('Hapus pendaftaran ini?')) {
-                            await fetch(`/api/admin/registrations/${reg.id}`, { method: 'DELETE', headers: authHeaders });
-                            loadAllData();
-                          }
-                        }}
-                        className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                        <button
+                          onClick={() => setEditingRegistration(reg)}
+                          className="p-2 text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
+                          title="Edit Pendaftaran"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm('Hapus pendaftaran ini?')) {
+                              const res = await fetch(`/api/admin/registrations/${reg.id}`, {
+                                method: 'DELETE',
+                                headers: authHeaders,
+                              });
+                              if (res.ok) {
+                                showNotification('success', 'Program pendaftaran berhasil dihapus.');
+                                await syncAfterChange();
+                              }
+                            }
+                          }}
+                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                          title="Hapus Pendaftaran"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -2146,7 +2501,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 9: DOCUMENTS */}
           {activeTab === 'documents' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Manajemen Dokumen Unduhan</h3>
                   <p className="text-xs text-slate-500">Berkas panduan, formulir offline, dan brosur resmi.</p>
@@ -2163,7 +2518,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       isActive: true,
                     })
                   }
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm cursor-pointer self-start sm:self-auto"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Tambah Dokumen</span>
@@ -2178,22 +2533,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ) : (
                   documents.map((doc) => (
                     <div key={doc.id} className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between gap-4">
-                      <div>
-                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">{doc.fileType}</span>
-                        <h4 className="font-bold text-xs text-slate-900 mt-1">{doc.title}</h4>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">{doc.fileType}</span>
+                          {!doc.isActive && (
+                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Nonaktif</span>
+                          )}
+                        </div>
+                        <h4 className="font-bold text-xs text-slate-900 mt-1 truncate">{doc.title}</h4>
                         <p className="text-[11px] text-slate-500">{doc.downloadCount || 0} Kali Diunduh</p>
                       </div>
-                      <button
-                        onClick={async () => {
-                          if (window.confirm('Hapus dokumen ini?')) {
-                            await fetch(`/api/admin/documents/${doc.id}`, { method: 'DELETE', headers: authHeaders });
-                            loadAllData();
-                          }
-                        }}
-                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setEditingDocument(doc)}
+                          className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer"
+                          title="Edit Dokumen"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm('Hapus dokumen ini?')) {
+                              const res = await fetch(`/api/admin/documents/${doc.id}`, {
+                                method: 'DELETE',
+                                headers: authHeaders,
+                              });
+                              if (res.ok) {
+                                showNotification('success', 'Dokumen berhasil dihapus.');
+                                await syncAfterChange();
+                              }
+                            }
+                          }}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                          title="Hapus Dokumen"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -2203,10 +2579,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* TAB 12: USERS */}
           {activeTab === 'users' && (
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs max-w-2xl space-y-4">
-              <div className="flex items-center justify-between">
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs max-w-2xl space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Manajemen Pengguna & Operator</h3>
+                  <h3 className="text-base font-bold text-slate-900">Manajemen Pengguna &amp; Operator</h3>
                   <p className="text-xs text-slate-500">Daftar akun pengelola portal terdaftar.</p>
                 </div>
                 <button
@@ -2219,18 +2595,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="divide-y divide-slate-100 text-xs">
                 {usersList.map((u) => (
-                  <div key={u.id} className="py-3 flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-slate-900">{u.fullName} <span className="font-normal text-slate-400">(@{u.username})</span></p>
+                  <div key={u.id} className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 truncate">{u.fullName} <span className="font-normal text-slate-400">(@{u.username})</span></p>
                       <p className="text-[11px] text-slate-500">Role: {u.role} • Status: {u.isActive ? 'Aktif' : 'Nonaktif'}</p>
                     </div>
                     {u.id !== session.user.id && (
                       <button
                         onClick={async () => {
-                          await fetch(`/api/admin/users/${u.id}/toggle-status`, { method: 'PUT', headers: authHeaders });
-                          loadAllData();
+                          const res = await fetch(`/api/admin/users/${u.id}/toggle-status`, {
+                            method: 'PUT',
+                            headers: authHeaders,
+                          });
+                          if (res.ok) {
+                            showNotification('success', `Status pengguna @${u.username} diperbarui.`);
+                            await loadAllData();
+                          }
                         }}
-                        className="px-2.5 py-1 text-[11px] font-semibold border rounded-lg cursor-pointer"
+                        className="px-2.5 py-1 text-[11px] font-semibold border rounded-lg cursor-pointer shrink-0"
                       >
                         {u.isActive ? 'Nonaktifkan' : 'Aktifkan'}
                       </button>
@@ -2271,7 +2653,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* ----------------- MODAL: EDIT SERVICE LINK ----------------- */}
       {editingLink && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative text-xs">
+          <div className="bg-white rounded-3xl p-5 sm:p-8 max-w-lg w-full shadow-2xl relative text-xs max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-base text-slate-900 mb-1">
               {editingLink.id ? 'Edit Layanan Digital' : 'Tambah Layanan Digital Baru'}
             </h3>
@@ -2433,6 +2815,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Cara Buka Tautan</label>
+                  <select
+                    value={editingLink.targetOpen || '_blank'}
+                    onChange={(e) => setEditingLink({ ...editingLink, targetOpen: e.target.value as '_blank' | '_self' })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="_blank">Tab Baru (_blank)</option>
+                    <option value="_self">Halaman Sama (_self)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Urutan Tampil</label>
+                  <input
+                    type="number"
+                    value={editingLink.order ?? 1}
+                    onChange={(e) => setEditingLink({ ...editingLink, order: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                <span className="font-semibold text-slate-700">Tampilkan di Halaman Publik (Aktif)</span>
+                <input
+                  type="checkbox"
+                  checked={editingLink.isActive ?? true}
+                  onChange={(e) => setEditingLink({ ...editingLink, isActive: e.target.checked })}
+                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                />
+              </label>
+
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -2505,6 +2920,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3 items-center">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Urutan Tampil</label>
+                  <input
+                    type="number"
+                    value={editingCategory.order ?? 1}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, order: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <label className="flex items-center justify-between p-2.5 mt-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                  <span className="font-semibold text-slate-700">Aktif</span>
+                  <input
+                    type="checkbox"
+                    checked={editingCategory.isActive ?? true}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, isActive: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                  />
+                </label>
+              </div>
+
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -2539,13 +2975,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                await fetch('/api/admin/announcements', {
-                  method: 'POST',
+                const isEdit = Boolean(editingAnnouncement.id);
+                const url = isEdit
+                  ? `/api/admin/announcements/${editingAnnouncement.id}`
+                  : '/api/admin/announcements';
+                const res = await fetch(url, {
+                  method: isEdit ? 'PUT' : 'POST',
                   headers: authHeaders,
                   body: JSON.stringify(editingAnnouncement),
                 });
+                const data = await res.json();
+                if (!res.ok) {
+                  showNotification('error', data.error || 'Gagal menyimpan pengumuman.');
+                  return;
+                }
+                showNotification(
+                  'success',
+                  `Pengumuman berhasil ${isEdit ? 'diperbarui' : 'diterbitkan'}.`
+                );
                 setEditingAnnouncement(null);
-                loadAllData();
+                await syncAfterChange();
               }}
               className="space-y-3.5"
             >
@@ -2627,6 +3076,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-700">Tanggal Publikasi</label>
+                  <input
+                    type="date"
+                    value={editingAnnouncement.publishDate || ''}
+                    onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, publishDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-700">Status</label>
+                  <select
+                    value={editingAnnouncement.status || 'published'}
+                    onChange={(e) =>
+                      setEditingAnnouncement({
+                        ...editingAnnouncement,
+                        status: e.target.value as 'published' | 'draft',
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
+                  >
+                    <option value="published">Dipublikasikan (Tampil)</option>
+                    <option value="draft">Draft (Sembunyikan)</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label className="block font-semibold mb-1 text-slate-700">Isi Informasi</label>
                 <textarea
@@ -2651,7 +3128,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="submit"
                   className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl cursor-pointer shadow-sm"
                 >
-                  Terbitkan Pengumuman
+                  {editingAnnouncement.id ? 'Simpan Perubahan' : 'Terbitkan Pengumuman'}
                 </button>
               </div>
             </form>
@@ -2662,18 +3139,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* ----------------- MODAL: EDIT REGISTRATION ----------------- */}
       {editingRegistration && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative text-xs">
-            <h3 className="font-bold text-base text-slate-900 mb-1">Pendaftaran Baru / PPDB</h3>
+          <div className="bg-white rounded-3xl p-5 sm:p-8 max-w-lg w-full shadow-2xl relative text-xs max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-base text-slate-900 mb-1">
+              {editingRegistration.id ? 'Edit Program Pendaftaran / PPDB' : 'Pendaftaran Baru / PPDB'}
+            </h3>
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                await fetch('/api/admin/registrations', {
-                  method: 'POST',
+                const isEdit = Boolean(editingRegistration.id);
+                const url = isEdit
+                  ? `/api/admin/registrations/${editingRegistration.id}`
+                  : '/api/admin/registrations';
+                const res = await fetch(url, {
+                  method: isEdit ? 'PUT' : 'POST',
                   headers: authHeaders,
                   body: JSON.stringify(editingRegistration),
                 });
+                const data = await res.json();
+                if (!res.ok) {
+                  showNotification('error', data.error || 'Gagal menyimpan program pendaftaran.');
+                  return;
+                }
+                showNotification(
+                  'success',
+                  `Program pendaftaran berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
+                );
                 setEditingRegistration(null);
-                loadAllData();
+                await syncAfterChange();
               }}
               className="space-y-3 mt-4"
             >
@@ -2699,18 +3191,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div>
                 <label className="block font-semibold mb-1">Deskripsi Singkat</label>
-                <input
-                  type="text"
+                <textarea
+                  rows={2}
                   value={editingRegistration.description || ''}
                   onChange={(e) => setEditingRegistration({ ...editingRegistration, description: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1">Tanggal Mulai</label>
+                  <input
+                    type="date"
+                    value={editingRegistration.startDate || ''}
+                    onChange={(e) => setEditingRegistration({ ...editingRegistration, startDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">Tanggal Berakhir</label>
+                  <input
+                    type="date"
+                    value={editingRegistration.endDate || ''}
+                    onChange={(e) => setEditingRegistration({ ...editingRegistration, endDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 items-center">
+                <div>
+                  <label className="block font-semibold mb-1">Status Pendaftaran</label>
+                  <select
+                    value={editingRegistration.status || 'open'}
+                    onChange={(e) =>
+                      setEditingRegistration({
+                        ...editingRegistration,
+                        status: e.target.value as 'open' | 'closed',
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
+                  >
+                    <option value="open">Sedang Dibuka</option>
+                    <option value="closed">Telah Ditutup</option>
+                  </select>
+                </div>
+                <label className="flex items-center justify-between p-2.5 mt-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                  <span className="font-semibold text-slate-700">Tampilkan di Publik</span>
+                  <input
+                    type="checkbox"
+                    checked={editingRegistration.isActive ?? true}
+                    onChange={(e) => setEditingRegistration({ ...editingRegistration, isActive: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                  />
+                </label>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setEditingRegistration(null)}
-                  className="px-4 py-2 bg-slate-100 rounded-xl cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 rounded-xl cursor-pointer font-semibold"
                 >
                   Batal
                 </button>
@@ -2729,18 +3268,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* ----------------- MODAL: EDIT DOCUMENT ----------------- */}
       {editingDocument && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative text-xs">
-            <h3 className="font-bold text-base text-slate-900 mb-1">Tambah Dokumen Unduhan</h3>
+          <div className="bg-white rounded-3xl p-5 sm:p-8 max-w-md w-full shadow-2xl relative text-xs max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-base text-slate-900 mb-1">
+              {editingDocument.id ? 'Edit Dokumen Unduhan' : 'Tambah Dokumen Unduhan'}
+            </h3>
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                await fetch('/api/admin/documents', {
-                  method: 'POST',
+                const isEdit = Boolean(editingDocument.id);
+                const url = isEdit ? `/api/admin/documents/${editingDocument.id}` : '/api/admin/documents';
+                const res = await fetch(url, {
+                  method: isEdit ? 'PUT' : 'POST',
                   headers: authHeaders,
                   body: JSON.stringify(editingDocument),
                 });
+                const data = await res.json();
+                if (!res.ok) {
+                  showNotification('error', data.error || 'Gagal menyimpan dokumen.');
+                  return;
+                }
+                showNotification('success', `Dokumen berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
                 setEditingDocument(null);
-                loadAllData();
+                await syncAfterChange();
               }}
               className="space-y-3 mt-4"
             >
@@ -2755,6 +3304,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
               <div>
+                <label className="block font-semibold mb-1">Deskripsi Singkat</label>
+                <input
+                  type="text"
+                  value={editingDocument.description || ''}
+                  onChange={(e) => setEditingDocument({ ...editingDocument, description: e.target.value })}
+                  placeholder="Contoh: Brosur resmi atau panduan pendaftaran"
+                  className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
+                />
+              </div>
+              <div>
                 <label className="block font-semibold mb-1">URL File / Download Link</label>
                 <input
                   type="text"
@@ -2764,7 +3323,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="w-full px-3 py-2 bg-slate-50 border rounded-xl font-mono"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-semibold mb-1">Kategori</label>
+                  <input
+                    type="text"
+                    value={editingDocument.category || 'Umum'}
+                    onChange={(e) => setEditingDocument({ ...editingDocument, category: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border rounded-xl"
+                  />
+                </div>
                 <div>
                   <label className="block font-semibold mb-1">Tipe File</label>
                   <input
@@ -2784,11 +3352,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <label className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                <span className="font-semibold text-slate-700">Tampilkan di Halaman Publik</span>
+                <input
+                  type="checkbox"
+                  checked={editingDocument.isActive ?? true}
+                  onChange={(e) => setEditingDocument({ ...editingDocument, isActive: e.target.checked })}
+                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                />
+              </label>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setEditingDocument(null)}
-                  className="px-4 py-2 bg-slate-100 rounded-xl cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 rounded-xl cursor-pointer font-semibold"
                 >
                   Batal
                 </button>
@@ -2824,7 +3401,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }
                 showNotification('success', 'Pengguna berhasil dibuat');
                 setShowNewUserModal(false);
-                loadAllData();
+                await loadAllData();
               }}
               className="space-y-3 mt-4"
             >
