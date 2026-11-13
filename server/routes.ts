@@ -8,7 +8,9 @@ import {
   restoreDatabase,
   getLastSetupCredentials,
   clearLastSetupCredentials,
-} from './db';
+  DEFAULT_COMMITTEE_CONTACTS,
+  DEFAULT_MADRASAH_ACHIEVEMENTS,
+} from './db.js';
 import {
   login,
   changeInitialPassword,
@@ -17,8 +19,8 @@ import {
   getAuthStatus,
   firstTimeAccess,
   setupPersonalAccount,
-} from './auth';
-import {
+} from './auth.js';
+import type {
   Category,
   ServiceLink,
   Registration,
@@ -28,19 +30,35 @@ import {
   StudentAchievement,
   CommitteeContact,
   MadrasahAchievement,
-} from '../src/types';
+} from '../src/types/index.js';
 import {
   generateUUID,
   hashPasswordSync,
   generateSalt,
   validatePasswordStrength,
-} from '../src/lib/crypto';
-import { getAllGasFiles } from './gasTemplates';
-import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../src/lib/brandAssets';
-import { DEFAULT_COMMITTEE_CONTACTS, DEFAULT_MADRASAH_ACHIEVEMENTS } from './db';
+} from '../src/lib/crypto.js';
+import { getAllGasFiles } from './gasTemplates.js';
+import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../src/lib/brandAssets.js';
 
 export const apiRouter = express.Router();
-apiRouter.use(express.json({ limit: '15mb' }));
+
+const routerJsonParser = express.json({ limit: '15mb' });
+apiRouter.use((req: Request, res: Response, next: NextFunction) => {
+  const anyReq = req as any;
+  if (anyReq._body || req.body !== undefined) {
+    if (typeof req.body === 'string') {
+      try {
+        req.body = JSON.parse(req.body);
+      } catch {
+        // leave as string
+      }
+    }
+    anyReq._body = true;
+    next();
+    return;
+  }
+  routerJsonParser(req, res, next);
+});
 
 // Auth Middleware for Protected Routes
 function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -241,7 +259,7 @@ apiRouter.get('/auth/status', (_req: Request, res: Response) => {
  * Allows entry to setup personal account without prior password
  */
 apiRouter.post('/auth/first-time-access', (req: Request, res: Response) => {
-  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
   const result = firstTimeAccess(clientIp);
 
   if (!result.success) {
@@ -270,7 +288,7 @@ apiRouter.post('/auth/setup-personal-account', (req: Request, res: Response) => 
     }
   }
 
-  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
   const result = setupPersonalAccount({
     userId,
     newUsername,
@@ -300,7 +318,7 @@ apiRouter.post('/auth/login', (req: Request, res: Response) => {
     return;
   }
 
-  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
   const result = login(username, password, clientIp);
 
   if (!result.success) {
@@ -326,7 +344,7 @@ apiRouter.post('/auth/change-initial-password', (req: Request, res: Response) =>
     return;
   }
 
-  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
   const result = changeInitialPassword(
     session.user.id,
     currentPassword,

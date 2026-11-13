@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
-import { apiRouter } from './server/routes';
-import { initializeDatabase } from './server/db';
+import { apiRouter } from './server/routes.js';
+import { initializeDatabase } from './server/db.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;

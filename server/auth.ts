@@ -1,16 +1,16 @@
 import crypto from 'node:crypto';
-import { User, AuthSession } from '../src/types';
+import type { User, AuthSession } from '../src/types/index.js';
 import {
   loadDatabase,
   saveDatabase,
   addActivityLog,
-} from './db';
+} from './db.js';
 import {
   verifyPassword,
   hashPasswordSync,
   generateSalt,
   validatePasswordStrength,
-} from '../src/lib/crypto';
+} from '../src/lib/crypto.js';
 
 // In-memory sessions cache & revoked token list
 const activeSessions = new Map<string, { user: User; expiresAt: number }>();

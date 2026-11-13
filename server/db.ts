@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {
+import type {
   DatabaseSchema,
   User,
   Role,
@@ -18,13 +18,13 @@ import {
   BackupLog,
   SetupCredentials,
   MadrasahAchievement,
-} from '../src/types';
+} from '../src/types/index.js';
 import {
   generateSalt,
   hashPasswordSync,
   generateTemporaryPassword,
   generateUUID,
-} from '../src/lib/crypto';
+} from '../src/lib/crypto.js';
 
 const BUNDLED_DATA_DIR = path.resolve(process.cwd(), 'data');
 const BUNDLED_DB_FILE = path.join(BUNDLED_DATA_DIR, 'db_portal_digital.json');

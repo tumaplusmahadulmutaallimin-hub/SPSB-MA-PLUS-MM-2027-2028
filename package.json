@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "vite build && esbuild server/vercelApp.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=api/index.mjs",
     "preview": "vite preview",
     "start": "tsx server.ts",
     "test": "tsx --test src/lib/crypto.test.ts server/db.test.ts server/auth.test.ts",
