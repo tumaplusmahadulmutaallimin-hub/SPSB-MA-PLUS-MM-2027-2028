@@ -1,0 +1,353 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'tumaplusmahadulmutaallimin@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function hasValidCreateTimestamps(data) {
+      return data.createdAt == request.time && data.updatedAt == request.time;
+    }
+
+    function hasValidUpdateTimestamps(data) {
+      return data.createdAt == existing().createdAt && data.updatedAt == request.time;
+    }
+
+    // Validation Helpers
+    function isValidAdminRecord(data, adminId) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'role', 'displayName', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == adminId && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.role in ['super_admin', 'admin']
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120));
+    }
+
+    function isValidSiteSettings(data) {
+      return data.keys().hasAll([
+        'portalName', 'institutionName', 'primaryColor', 'accentColor',
+        'heroEnabled', 'announcementsEnabled', 'registrationsEnabled',
+        'documentsEnabled', 'searchEnabled', 'categoriesEnabled',
+        'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'portalName', 'institutionName', 'tagline', 'description',
+        'logoUrl', 'faviconUrl', 'bannerUrl', 'primaryColor', 'accentColor',
+        'whatsappNumber', 'email', 'address',
+        'instagramUrl', 'facebookUrl', 'youtubeUrl', 'tiktokUrl', 'websiteUrl',
+        'copyrightText', 'heroEnabled', 'announcementsEnabled',
+        'registrationsEnabled', 'documentsEnabled', 'searchEnabled', 'categoriesEnabled',
+        'createdAt', 'updatedAt'
+      ])
+      && data.portalName is string && data.portalName.size() >= 1 && data.portalName.size() <= 120
+      && data.institutionName is string && data.institutionName.size() >= 1 && data.institutionName.size() <= 160
+      && (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 240))
+      && (!('description' in data) || (data.description is string && data.description.size() <= 1000))
+      && (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 600000))
+      && (!('faviconUrl' in data) || (data.faviconUrl is string && data.faviconUrl.size() <= 600000))
+      && (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() <= 700000))
+      && data.primaryColor is string && data.primaryColor.size() >= 3 && data.primaryColor.size() <= 32
+      && data.accentColor is string && data.accentColor.size() >= 3 && data.accentColor.size() <= 32
+      && (!('whatsappNumber' in data) || (data.whatsappNumber is string && data.whatsappNumber.size() <= 64))
+      && (!('email' in data) || (data.email is string && data.email.size() <= 200))
+      && (!('address' in data) || (data.address is string && data.address.size() <= 500))
+      && (!('instagramUrl' in data) || (data.instagramUrl is string && data.instagramUrl.size() <= 500))
+      && (!('facebookUrl' in data) || (data.facebookUrl is string && data.facebookUrl.size() <= 500))
+      && (!('youtubeUrl' in data) || (data.youtubeUrl is string && data.youtubeUrl.size() <= 500))
+      && (!('tiktokUrl' in data) || (data.tiktokUrl is string && data.tiktokUrl.size() <= 500))
+      && (!('websiteUrl' in data) || (data.websiteUrl is string && data.websiteUrl.size() <= 500))
+      && (!('copyrightText' in data) || (data.copyrightText is string && data.copyrightText.size() <= 300))
+      && data.heroEnabled is bool
+      && data.announcementsEnabled is bool
+      && data.registrationsEnabled is bool
+      && data.documentsEnabled is bool
+      && data.searchEnabled is bool
+      && data.categoriesEnabled is bool;
+    }
+
+    function isValidQrSettings(data) {
+      return data.keys().hasAll([
+        'size', 'foregroundColor', 'backgroundColor', 'includeLogo',
+        'errorCorrectionLevel', 'posterTitle', 'posterSubtitle', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'portalUrl', 'size', 'foregroundColor', 'backgroundColor', 'includeLogo',
+        'logoUrl', 'errorCorrectionLevel', 'posterTitle', 'posterSubtitle',
+        'posterFooter', 'createdAt', 'updatedAt'
+      ])
+      && (!('portalUrl' in data) || (data.portalUrl is string && data.portalUrl.size() <= 500))
+      && data.size is number && data.size >= 100 && data.size <= 1024
+      && data.foregroundColor is string && data.foregroundColor.size() <= 32
+      && data.backgroundColor is string && data.backgroundColor.size() <= 32
+      && data.includeLogo is bool
+      && (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 600000))
+      && data.errorCorrectionLevel in ['L', 'M', 'Q', 'H']
+      && data.posterTitle is string && data.posterTitle.size() <= 160
+      && data.posterSubtitle is string && data.posterSubtitle.size() <= 300
+      && (!('posterFooter' in data) || (data.posterFooter is string && data.posterFooter.size() <= 300));
+    }
+
+    function isValidCategory(data, catId) {
+      return data.keys().hasAll(['id', 'name', 'icon', 'order', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'description', 'icon', 'order', 'isActive', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id == catId && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && (!('description' in data) || (data.description is string && data.description.size() <= 500))
+        && data.icon is string && data.icon.size() <= 80
+        && data.order is number
+        && data.isActive is bool;
+    }
+
+    function isValidServiceLink(data, linkId) {
+      return data.keys().hasAll([
+        'id', 'name', 'iconType', 'icon', 'targetUrl', 'targetOpen',
+        'order', 'isActive', 'clicksCount', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'name', 'categoryId', 'description', 'iconType', 'icon',
+        'targetUrl', 'targetOpen', 'order', 'isActive', 'clicksCount',
+        'createdAt', 'updatedAt'
+      ])
+      && data.id is string && data.id == linkId && isValidId(data.id)
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+      && (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() <= 128))
+      && (!('description' in data) || (data.description is string && data.description.size() <= 500))
+      && data.iconType in ['lucide', 'image', 'upload']
+      && data.icon is string && data.icon.size() <= 700000
+      && data.targetUrl is string && data.targetUrl.size() >= 1 && data.targetUrl.size() <= 1000
+      && data.targetOpen in ['_blank', '_self']
+      && data.order is number
+      && data.isActive is bool
+      && data.clicksCount is number && data.clicksCount >= 0;
+    }
+
+    function isValidAnnouncement(data, annId) {
+      return data.keys().hasAll(['id', 'title', 'content', 'publishDate', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'content', 'imageUrl', 'publishDate', 'expiryDate', 'status', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id == annId && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 5000
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 700000))
+        && data.publishDate is string && data.publishDate.size() <= 40
+        && (!('expiryDate' in data) || (data.expiryDate is string && data.expiryDate.size() <= 40))
+        && data.status in ['published', 'draft'];
+    }
+
+    function isValidRegistration(data, regId) {
+      return data.keys().hasAll(['id', 'title', 'formUrl', 'status', 'order', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'description', 'bannerUrl', 'formUrl', 'startDate', 'endDate', 'status', 'order', 'isActive', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id == regId && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && (!('description' in data) || (data.description is string && data.description.size() <= 1000))
+        && (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() <= 700000))
+        && data.formUrl is string && data.formUrl.size() >= 1 && data.formUrl.size() <= 1000
+        && (!('startDate' in data) || (data.startDate is string && data.startDate.size() <= 40))
+        && (!('endDate' in data) || (data.endDate is string && data.endDate.size() <= 40))
+        && data.status in ['open', 'closed']
+        && data.order is number
+        && data.isActive is bool;
+    }
+
+    function isValidDocument(data, docId) {
+      return data.keys().hasAll(['id', 'title', 'category', 'fileUrl', 'fileType', 'downloadCount', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'description', 'category', 'fileUrl', 'fileType', 'fileSize', 'downloadCount', 'isActive', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id == docId && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && (!('description' in data) || (data.description is string && data.description.size() <= 1000))
+        && data.category is string && data.category.size() <= 80
+        && data.fileUrl is string && data.fileUrl.size() >= 1 && data.fileUrl.size() <= 1000
+        && data.fileType is string && data.fileType.size() <= 24
+        && (!('fileSize' in data) || (data.fileSize is string && data.fileSize.size() <= 40))
+        && data.downloadCount is number && data.downloadCount >= 0
+        && data.isActive is bool;
+    }
+
+    function isValidCommitteeContact(data, contactId) {
+      return data.keys().hasAll(['id', 'name', 'role', 'whatsappNumber', 'isAvailable', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'role', 'whatsappNumber', 'notes', 'isAvailable', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id == contactId && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.role is string && data.role.size() >= 1 && data.role.size() <= 120
+        && data.whatsappNumber is string && data.whatsappNumber.size() >= 4 && data.whatsappNumber.size() <= 40
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 300))
+        && data.isAvailable is bool;
+    }
+
+    function isValidMadrasahAchievement(data, achId) {
+      return data.keys().hasAll(['id', 'title', 'shortDescription', 'order', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'title', 'category', 'level', 'recipient', 'year', 'photoUrl', 'shortDescription', 'order', 'isActive', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id == achId && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && (!('category' in data) || (data.category is string && data.category.size() <= 100))
+        && (!('level' in data) || (data.level is string && data.level.size() <= 100))
+        && (!('recipient' in data) || (data.recipient is string && data.recipient.size() <= 160))
+        && (!('year' in data) || (data.year is string && data.year.size() <= 20))
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 700000))
+        && data.shortDescription is string && data.shortDescription.size() <= 1000
+        && data.order is number
+        && data.isActive is bool;
+    }
+
+    function isValidStudentAchievement(data, achId) {
+      return data.keys().hasAll([
+        'id', 'studentName', 'registrationNumberOrNisn', 'achievementTitle',
+        'field', 'level', 'rank', 'year', 'status', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'studentName', 'registrationNumberOrNisn', 'achievementTitle',
+        'field', 'level', 'rank', 'organizer', 'year',
+        'certificateUrl', 'certificateFileName', 'notes', 'status',
+        'submittedAt', 'createdAt', 'updatedAt'
+      ])
+      && data.id is string && data.id == achId && isValidId(data.id)
+      && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 160
+      && data.registrationNumberOrNisn is string && data.registrationNumberOrNisn.size() >= 1 && data.registrationNumberOrNisn.size() <= 64
+      && data.achievementTitle is string && data.achievementTitle.size() >= 1 && data.achievementTitle.size() <= 200
+      && data.field is string && data.field.size() <= 80
+      && data.level is string && data.level.size() <= 80
+      && data.rank is string && data.rank.size() <= 80
+      && (!('organizer' in data) || (data.organizer is string && data.organizer.size() <= 160))
+      && data.year is string && data.year.size() <= 20
+      && (!('certificateUrl' in data) || (data.certificateUrl is string && data.certificateUrl.size() <= 750000))
+      && (!('certificateFileName' in data) || (data.certificateFileName is string && data.certificateFileName.size() <= 200))
+      && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+      && (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() <= 64))
+      && data.status in ['pending', 'verified', 'rejected'];
+    }
+
+    // Collection Rules
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isAdmin() || (isSignedIn() && request.auth.uid == adminId));
+      allow list: if isAdmin();
+      allow create: if isValidId(adminId) && isAdmin() && isValidAdminRecord(incoming(), adminId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(adminId) && isAdmin() && isValidAdminRecord(incoming(), adminId) && hasValidUpdateTimestamps(incoming())
+        && incoming().uid == existing().uid;
+      allow delete: if isValidId(adminId) && isAdmin();
+    }
+
+    match /site_settings/{settingId} {
+      allow get: if isValidId(settingId) && (settingId == 'default' || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(settingId) && settingId == 'default' && isAdmin() && isValidSiteSettings(incoming()) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(settingId) && settingId == 'default' && isAdmin() && isValidSiteSettings(incoming()) && hasValidUpdateTimestamps(incoming());
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    match /qr_settings/{settingId} {
+      allow get: if isValidId(settingId) && (settingId == 'default' || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(settingId) && settingId == 'default' && isAdmin() && isValidQrSettings(incoming()) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(settingId) && settingId == 'default' && isAdmin() && isValidQrSettings(incoming()) && hasValidUpdateTimestamps(incoming());
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId) && (existing().isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow create: if isValidId(categoryId) && isAdmin() && isValidCategory(incoming(), categoryId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(categoryId) && isAdmin() && isValidCategory(incoming(), categoryId) && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id;
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    match /links/{linkId} {
+      allow get: if isValidId(linkId) && (existing().isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow create: if isValidId(linkId) && isAdmin() && isValidServiceLink(incoming(), linkId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(linkId) && isAdmin() && isValidServiceLink(incoming(), linkId) && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id;
+      allow delete: if isValidId(linkId) && isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow get: if isValidId(announcementId) && (existing().status == 'published' || isAdmin());
+      allow list: if resource.data.status == 'published' || isAdmin();
+      allow create: if isValidId(announcementId) && isAdmin() && isValidAnnouncement(incoming(), announcementId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(announcementId) && isAdmin() && isValidAnnouncement(incoming(), announcementId) && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id;
+      allow delete: if isValidId(announcementId) && isAdmin();
+    }
+
+    match /registrations/{registrationId} {
+      allow get: if isValidId(registrationId) && (existing().isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow create: if isValidId(registrationId) && isAdmin() && isValidRegistration(incoming(), registrationId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(registrationId) && isAdmin() && isValidRegistration(incoming(), registrationId) && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id;
+      allow delete: if isValidId(registrationId) && isAdmin();
+    }
+
+    match /documents/{documentId} {
+      allow get: if isValidId(documentId) && (existing().isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow create: if isValidId(documentId) && isAdmin() && isValidDocument(incoming(), documentId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(documentId) && isAdmin() && isValidDocument(incoming(), documentId) && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id;
+      allow delete: if isValidId(documentId) && isAdmin();
+    }
+
+    match /committee_contacts/{contactId} {
+      allow get: if isValidId(contactId) && (existing().isAvailable == true || isAdmin());
+      allow list: if resource.data.isAvailable == true || isAdmin();
+      allow create: if isValidId(contactId) && isAdmin() && isValidCommitteeContact(incoming(), contactId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(contactId) && isAdmin() && isValidCommitteeContact(incoming(), contactId) && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id;
+      allow delete: if isValidId(contactId) && isAdmin();
+    }
+
+    match /madrasah_achievements/{achievementId} {
+      allow get: if isValidId(achievementId) && (existing().isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow create: if isValidId(achievementId) && isAdmin() && isValidMadrasahAchievement(incoming(), achievementId) && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(achievementId) && isAdmin() && isValidMadrasahAchievement(incoming(), achievementId) && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id;
+      allow delete: if isValidId(achievementId) && isAdmin();
+    }
+
+    match /student_achievements/{achievementId} {
+      allow get: if isValidId(achievementId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(achievementId)
+        && isValidStudentAchievement(incoming(), achievementId)
+        && incoming().status == 'pending'
+        && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(achievementId)
+        && isAdmin()
+        && isValidStudentAchievement(incoming(), achievementId)
+        && hasValidUpdateTimestamps(incoming())
+        && incoming().id == existing().id
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']);
+      allow delete: if isValidId(achievementId) && isAdmin();
+    }
+  }
+}

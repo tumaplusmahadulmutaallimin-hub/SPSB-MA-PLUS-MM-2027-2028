@@ -96,6 +96,13 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
 }
 
 // ----------------------------------------------------
+// HEALTH CHECK
+// ----------------------------------------------------
+apiRouter.get('/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', service: 'Portal Digital Terpadu API' });
+});
+
+// ----------------------------------------------------
 // PUBLIC ENDPOINTS (No login needed)
 // ----------------------------------------------------
 

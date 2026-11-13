@@ -11,6 +11,11 @@ import {
   UserCheck,
   Sparkles,
 } from 'lucide-react';
+import {
+  compressImageFileToDataUrl,
+  createStudentAchievementInFirestore,
+} from '../../lib/firestorePortal';
+import type { StudentAchievement } from '../../types';
 
 interface AchievementModalProps {
   isOpen: boolean;
@@ -34,9 +39,9 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
 
   // Form states
   const [achievementTitle, setAchievementTitle] = useState('');
-  const [field, setField] = useState('tahfidz');
-  const [level, setLevel] = useState('Provinsi');
-  const [rank, setRank] = useState('Juara 1');
+  const [field, setField] = useState<StudentAchievement['field']>('tahfidz');
+  const [level, setLevel] = useState<StudentAchievement['level']>('Provinsi');
+  const [rank, setRank] = useState<StudentAchievement['rank']>('Juara 1');
   const [organizer, setOrganizer] = useState('');
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [certificateData, setCertificateData] = useState<string>('');
@@ -62,8 +67,8 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle certificate file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle certificate file upload (with image compression for Firestore limit)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -73,9 +78,24 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
     }
 
     setCertificateName(file.name);
+    if (file.type.startsWith('image/')) {
+      try {
+        const compressed = await compressImageFileToDataUrl(file, 1400, 580000);
+        setCertificateData(compressed);
+        return;
+      } catch {
+        // fallback to FileReader
+      }
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
-      setCertificateData(reader.result as string);
+      const result = String(reader.result || '');
+      if (result.length > 740000) {
+        setErrorMessage('Ukuran berkas PDF/non-gambar melebihi batas simpan cloud (~500 KB). Silakan unggah foto/scan gambar (JPG/PNG).');
+        return;
+      }
+      setCertificateData(result);
     };
     reader.readAsDataURL(file);
   };
@@ -143,6 +163,31 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
         setErrorMessage(data.error || 'Gagal mengirimkan pendaftaran prestasi.');
         setIsSubmitting(false);
         return;
+      }
+
+      // Persist to Cloud Firestore so admin verification works across refreshes & serverless instances
+      try {
+        const nowIso = new Date().toISOString();
+        await createStudentAchievementInFirestore({
+          id: data.achievementId,
+          studentName: selectedApplicant.name,
+          registrationNumberOrNisn: selectedApplicant.nisn,
+          achievementTitle,
+          field,
+          level,
+          rank,
+          organizer,
+          year,
+          certificateUrl: certificateData,
+          certificateFileName: certificateName || 'piagam_prestasi.pdf',
+          notes,
+          status: 'pending',
+          submittedAt: nowIso,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        });
+      } catch (cloudErr) {
+        console.warn('Firestore achievement sync skipped/warning:', cloudErr);
       }
 
       setTandaTerimaCode(data.achievementId.substring(0, 8).toUpperCase());
@@ -330,7 +375,7 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
                 <label className="block font-semibold text-slate-700 mb-1">Bidang Prestasi</label>
                 <select
                   value={field}
-                  onChange={(e) => setField(e.target.value)}
+                  onChange={(e) => setField(e.target.value as StudentAchievement['field'])}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
                 >
                   <option value="tahfidz">Tahfidz Al-Qur'an</option>
@@ -346,7 +391,7 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
                 <label className="block font-semibold text-slate-700 mb-1">Tingkat Kejuaraan</label>
                 <select
                   value={level}
-                  onChange={(e) => setLevel(e.target.value)}
+                  onChange={(e) => setLevel(e.target.value as StudentAchievement['level'])}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
                 >
                   <option value="Kecamatan">Kecamatan</option>
@@ -363,7 +408,7 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
                 <label className="block font-semibold text-slate-700 mb-1">Peringkat Juara</label>
                 <select
                   value={rank}
-                  onChange={(e) => setRank(e.target.value)}
+                  onChange={(e) => setRank(e.target.value as StudentAchievement['rank'])}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
                 >
                   <option value="Juara 1">Juara 1</option>

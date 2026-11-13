@@ -20,18 +20,59 @@ import { LoginModal } from './components/admin/LoginModal';
 import { SetupPersonalAccountModal } from './components/admin/SetupPersonalAccountModal';
 import { Lock, X, Sparkles, ArrowRight } from 'lucide-react';
 import { AuthStatus } from './types';
+import {
+  fetchPublicPortalFromFirestore,
+  subscribePublicPortalFromFirestore,
+} from './lib/firestorePortal';
 
 const SESSION_STORAGE_KEY = 'PORTAL_AUTH_SESSION_V1';
+const VIEW_STORAGE_KEY = 'PORTAL_ACTIVE_VIEW_V1';
 const PORTAL_SYNC_STORAGE_KEY = 'PORTAL_LAST_SYNC_TS';
 const PORTAL_SYNC_CHANNEL = 'portal_digital_sync';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'public' | 'admin'>('public');
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const [currentView, setCurrentView] = useState<'public' | 'admin'>(() => {
+    try {
+      const savedView = sessionStorage.getItem(VIEW_STORAGE_KEY);
+      const savedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (savedView === 'admin' && savedSession) {
+        const parsed = JSON.parse(savedSession);
+        if (parsed?.expiresAt > Date.now() && !parsed?.user?.mustChangePassword) {
+          return 'admin';
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 'public';
+  });
+  const [session, setSession] = useState<AuthSession | null>(() => {
+    try {
+      const savedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (savedSession) {
+        const parsed = JSON.parse(savedSession);
+        if (parsed?.expiresAt > Date.now()) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSetupAccountModal, setShowSetupAccountModal] = useState(false);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [dismissBanner, setDismissBanner] = useState(false);
+  const cloudInitializedRef = React.useRef(false);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(VIEW_STORAGE_KEY, currentView);
+    } catch {
+      // ignore
+    }
+  }, [currentView]);
 
   // Public portal data
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
@@ -44,15 +85,32 @@ export default function App() {
   const [madrasahAchievements, setMadrasahAchievements] = useState<MadrasahAchievement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch public portal data with cache bypass
+  // Fetch public portal data (preferring Cloud Firestore once initialized, with API fallback)
   const loadPublicData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/public/portal?ts=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const [apiRes, cloudSnapshot] = await Promise.all([
+        fetch(`/api/public/portal?ts=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        }).catch(() => null),
+        fetchPublicPortalFromFirestore().catch(() => null),
+      ]);
+
+      if (cloudSnapshot && cloudSnapshot.initialized && cloudSnapshot.siteSettings) {
+        cloudInitializedRef.current = true;
+        setSiteSettings(cloudSnapshot.siteSettings);
+        setCategories(cloudSnapshot.categories);
+        setLinks(cloudSnapshot.links);
+        setAnnouncements(cloudSnapshot.announcements);
+        setRegistrations(cloudSnapshot.registrations);
+        setDocuments(cloudSnapshot.documents);
+        setCommitteeContacts(cloudSnapshot.committeeContacts);
+        setMadrasahAchievements(cloudSnapshot.madrasahAchievements);
+        return;
+      }
+
+      if (apiRes && apiRes.ok && !cloudInitializedRef.current) {
+        const data = await apiRes.json();
         setSiteSettings(data.siteSettings);
         setCategories(data.categories || []);
         setLinks(data.links || []);
@@ -157,12 +215,28 @@ export default function App() {
       }
     }, 15000);
 
+    // Real-time Firestore listener so updates reflect immediately across all browsers & refreshes
+    const unsubFirestore = subscribePublicPortalFromFirestore((snap) => {
+      if (!snap.initialized) return;
+      cloudInitializedRef.current = true;
+      if (snap.siteSettings) setSiteSettings(snap.siteSettings);
+      if (snap.categories) setCategories(snap.categories);
+      if (snap.links) setLinks(snap.links);
+      if (snap.announcements) setAnnouncements(snap.announcements);
+      if (snap.registrations) setRegistrations(snap.registrations);
+      if (snap.documents) setDocuments(snap.documents);
+      if (snap.committeeContacts) setCommitteeContacts(snap.committeeContacts);
+      if (snap.madrasahAchievements) setMadrasahAchievements(snap.madrasahAchievements);
+      setLoading(false);
+    });
+
     return () => {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       if (channel) channel.close();
       window.clearInterval(intervalId);
+      unsubFirestore();
     };
   }, [loadPublicData, currentView]);
 
@@ -206,16 +280,22 @@ export default function App() {
                 }
               } else {
                 localStorage.removeItem(SESSION_STORAGE_KEY);
+                setSession(null);
+                setCurrentView('public');
               }
             })
             .catch(() => {
-              localStorage.removeItem(SESSION_STORAGE_KEY);
+              // Keep local session if network temporarily unavailable; only invalidate on explicit 401
             });
         } else {
           localStorage.removeItem(SESSION_STORAGE_KEY);
+          setSession(null);
+          setCurrentView('public');
         }
       } catch {
         localStorage.removeItem(SESSION_STORAGE_KEY);
+        setSession(null);
+        setCurrentView('public');
       }
     }
 
@@ -279,6 +359,11 @@ export default function App() {
     }
     setSession(null);
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    try {
+      sessionStorage.removeItem(VIEW_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
     setCurrentView('public');
     loadPublicData();
   };

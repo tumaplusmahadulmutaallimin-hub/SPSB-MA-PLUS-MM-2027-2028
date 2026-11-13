@@ -200,6 +200,7 @@ export interface StudentAchievement {
   certificateFileName?: string;
   notes?: string;
   status: 'pending' | 'verified' | 'rejected';
+  submittedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

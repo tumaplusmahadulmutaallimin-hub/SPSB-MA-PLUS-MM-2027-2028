@@ -166,7 +166,7 @@ export function saveDatabase(data: DatabaseSchema): void {
   try {
     ensureDirectories();
     const dbFile = getDbFile();
-    const tempPath = `${dbFile}.tmp.${Date.now()}`;
+    const tempPath = `${dbFile}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
     fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tempPath, dbFile);
   } catch (err) {

@@ -1,0 +1,125 @@
+{
+  "USERS": [
+    {
+      "id": "08cb7428-eb3d-473f-b897-e11786fed256",
+      "username": "131235210019",
+      "email": "tumaplusmahadulmutaallimin@gmail.com",
+      "fullName": "Administrator MA Plus MM",
+      "passwordHash": "153c5c0a30d263abb4a4cd257365307fe706effa85785b63ffec2225f89e0348090d4dd7a7c57c5870eaaffa385e98457d9444ea2d2746f542db8873a280b079",
+      "salt": "34357922df4b5104204042e6db97ef3c",
+      "role": "super_admin",
+      "mustChangePassword": false,
+      "isActive": true,
+      "lastLoginAt": null,
+      "createdAt": "2026-11-13T03:55:22.656Z",
+      "updatedAt": "2026-11-13T03:55:22.656Z"
+    }
+  ],
+  "ROLES": [
+    {
+      "id": "role-superadmin",
+      "name": "Super Administrator",
+      "description": "Akses penuh ke seluruh sistem, pengguna, pengaturan, dan database.",
+      "permissions": [
+        "all"
+      ],
+      "createdAt": "2026-11-13T03:55:22.516Z"
+    },
+    {
+      "id": "role-admin",
+      "name": "Administrator",
+      "description": "Mengelola konten portal, ikon layanan, kategori, pengumuman, dan dokumen.",
+      "permissions": [
+        "manage_content",
+        "manage_links",
+        "manage_announcements",
+        "manage_documents",
+        "view_analytics"
+      ],
+      "createdAt": "2026-11-13T03:55:22.516Z"
+    },
+    {
+      "id": "role-operator",
+      "name": "Operator",
+      "description": "Mengelola pengumuman dan melihat statistik.",
+      "permissions": [
+        "manage_announcements",
+        "view_analytics"
+      ],
+      "createdAt": "2026-11-13T03:55:22.516Z"
+    }
+  ],
+  "CATEGORIES": [],
+  "LINKS": [],
+  "REGISTRATIONS": [],
+  "ANNOUNCEMENTS": [],
+  "DOCUMENTS": [],
+  "SITE_SETTINGS": {
+    "portalName": "Portal Digital Terpadu",
+    "institutionName": "MA PLUS MA'HADUL MUTA'ALLIMIN",
+    "tagline": "One QR Code – One Portal – All Digital Services",
+    "description": "Pusat akses resmi seluruh layanan, pendaftaran PPDB, daftarkan prestasi santri, dokumen, dan saluran informasi resmi MA Plus MM.",
+    "logoUrl": "",
+    "faviconUrl": "",
+    "bannerUrl": "",
+    "primaryColor": "#065f46",
+    "accentColor": "#d97706",
+    "whatsappNumber": "",
+    "email": "tumaplusmahadulmutaallimin@gmail.com",
+    "address": "",
+    "instagramUrl": "",
+    "facebookUrl": "",
+    "youtubeUrl": "",
+    "tiktokUrl": "",
+    "websiteUrl": "",
+    "copyrightText": "© 2026 MA Plus Ma'hadul Muta'allimin. Seluruh Hak Cipta Dilindungi.",
+    "heroEnabled": true,
+    "announcementsEnabled": true,
+    "registrationsEnabled": true,
+    "documentsEnabled": true,
+    "searchEnabled": true,
+    "categoriesEnabled": true,
+    "updatedAt": "2026-11-13T03:55:22.516Z"
+  },
+  "QR_SETTINGS": {
+    "portalUrl": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app",
+    "size": 320,
+    "foregroundColor": "#065f46",
+    "backgroundColor": "#ffffff",
+    "includeLogo": true,
+    "logoUrl": "",
+    "errorCorrectionLevel": "H",
+    "posterTitle": "PORTAL DIGITAL TERPADU",
+    "posterSubtitle": "Pusat Akses Layanan Resmi MA Plus Ma'hadul Muta'allimin",
+    "posterFooter": "Buka kamera smartphone Anda dan arahkan ke kode QR di atas.",
+    "updatedAt": "2026-11-13T03:55:22.516Z"
+  },
+  "VISITORS": [],
+  "LINK_CLICKS": [],
+  "ACTIVITY_LOGS": [
+    {
+      "id": "3dca5622-b246-4977-9bca-270d943ca44c",
+      "timestamp": "2026-11-13T03:55:22.658Z",
+      "userId": "system",
+      "username": "SYSTEM",
+      "action": "INITIALIZE_DATABASE",
+      "details": "Database DB_PORTAL_DIGITAL berhasil diinisialisasi secara otomatis tanpa data dummy.",
+      "ipAddress": "127.0.0.1"
+    }
+  ],
+  "SYSTEM_CONFIG": {
+    "version": "1.0.0",
+    "appName": "Portal Digital Terpadu",
+    "databaseName": "DB_PORTAL_DIGITAL",
+    "installationCompleted": true,
+    "installedAt": "2026-11-13T03:55:22.528Z",
+    "lastBackupAt": null,
+    "maxLoginAttempts": 5,
+    "sessionTimeoutHours": 8,
+    "hasCustomAdminCreated": true
+  },
+  "BACKUP_LOGS": [],
+  "STUDENT_ACHIEVEMENTS": [],
+  "COMMITTEE_CONTACTS": [],
+  "MADRASAH_ACHIEVEMENTS": []
+}

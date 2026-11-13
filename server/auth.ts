@@ -240,16 +240,19 @@ export function verifySession(token: string): { user: User; mustChangePassword: 
   if (!token || revokedTokens.has(token)) return null;
 
   let userId: string | null = null;
+  let usernameHint: string | null = null;
   let expiresAt = 0;
 
   const signedPayload = verifySignedSessionToken(token);
   if (signedPayload) {
     userId = signedPayload.userId;
+    usernameHint = signedPayload.username || null;
     expiresAt = signedPayload.expiresAt;
   } else {
     const session = activeSessions.get(token);
     if (!session) return null;
     userId = session.user.id;
+    usernameHint = session.user.username || null;
     expiresAt = session.expiresAt;
   }
 
@@ -258,9 +261,13 @@ export function verifySession(token: string): { user: User; mustChangePassword: 
     return null;
   }
 
-  // Ensure user still exists and is active in database
+  // Ensure user still exists and is active in database (support id or username match across serverless containers)
   const db = loadDatabase();
-  const freshUser = db.USERS.find((u) => u.id === userId && u.isActive);
+  const freshUser = db.USERS.find(
+    (u) =>
+      u.isActive &&
+      (u.id === userId || (usernameHint !== null && u.username.toLowerCase() === usernameHint.toLowerCase()))
+  );
   if (!freshUser) {
     activeSessions.delete(token);
     return null;

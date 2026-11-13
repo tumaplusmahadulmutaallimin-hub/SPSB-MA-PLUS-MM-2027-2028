@@ -40,7 +40,42 @@ import {
   Trophy,
   Menu,
   X,
+  Cloud,
+  CloudOff,
 } from 'lucide-react';
+import type { User as FirebaseUser } from 'firebase/auth';
+import {
+  ADMIN_AUTHORIZED_EMAIL,
+  isAuthorizedFirebaseAdmin,
+  onFirebaseAuthChange,
+  signInAdminWithGoogle,
+  signOutFirebase,
+} from '../../lib/firebase';
+import {
+  clearPortalCollectionsInFirestore,
+  compressImageFileToDataUrl,
+  deleteAnnouncementFromFirestore,
+  deleteCategoryFromFirestore,
+  deleteContactFromFirestore,
+  deleteDocumentFromFirestore,
+  deleteLinkFromFirestore,
+  deleteMadrasahAchievementFromFirestore,
+  deleteRegistrationFromFirestore,
+  deleteStudentAchievementFromFirestore,
+  isCloudAdminReady,
+  loadAllAdminFromFirestore,
+  saveAnnouncementToFirestore,
+  saveCategoryToFirestore,
+  saveContactToFirestore,
+  saveDocumentToFirestore,
+  saveLinkToFirestore,
+  saveMadrasahAchievementToFirestore,
+  saveQrSettingsToFirestore,
+  saveRegistrationToFirestore,
+  saveSiteSettingsToFirestore,
+  syncAllLocalToFirestore,
+  verifyStudentAchievementInFirestore,
+} from '../../lib/firestorePortal';
 import {
   AuthSession,
   Category,
@@ -58,6 +93,8 @@ import {
 } from '../../types';
 import { IconRenderer, AVAILABLE_LUCIDE_ICONS } from '../common/IconRenderer';
 import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../../lib/brandAssets';
+
+const ADMIN_TAB_STORAGE_KEY = 'PORTAL_ADMIN_ACTIVE_TAB_V1';
 
 interface AdminDashboardProps {
   session: AuthSession;
@@ -91,11 +128,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onViewPublicPortal,
   onDataUpdated,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    try {
+      const saved = sessionStorage.getItem(ADMIN_TAB_STORAGE_KEY) as TabType | null;
+      if (saved) return saved;
+    } catch {
+      // ignore
+    }
+    return 'overview';
+  });
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(ADMIN_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
 
   // Data states
   const [dashboardStats, setDashboardStats] = useState<any>(null);
@@ -164,6 +219,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         achRes,
         contactsRes,
         madrasahAchRes,
+        cloudData,
       ] = await Promise.all([
         fetch('/api/admin/dashboard', fetchOpts),
         fetch('/api/admin/categories', fetchOpts),
@@ -179,22 +235,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         fetch('/api/admin/achievements', fetchOpts),
         fetch('/api/admin/committee-contacts', fetchOpts),
         fetch('/api/admin/madrasah-achievements', fetchOpts),
+        loadAllAdminFromFirestore().catch(() => null),
       ]);
 
       if (dashRes.ok) setDashboardStats(await dashRes.json());
-      if (catRes.ok) setCategories(await catRes.json());
-      if (linkRes.ok) setLinks(await linkRes.json());
-      if (annRes.ok) setAnnouncements(await annRes.json());
-      if (regRes.ok) setRegistrations(await regRes.json());
-      if (docRes.ok) setDocuments(await docRes.json());
-      if (settRes.ok) setSiteSettings(await settRes.json());
-      if (qrRes.ok) setQrSettings(await qrRes.json());
       if (logsRes.ok) setActivityLogs(await logsRes.json());
       if (usersRes.ok) setUsersList(await usersRes.json());
       if (backupsRes.ok) setBackupLogs(await backupsRes.json());
-      if (achRes.ok) setAchievements(await achRes.json());
-      if (contactsRes.ok) setCommitteeContacts(await contactsRes.json());
-      if (madrasahAchRes.ok) setMadrasahAchievements(await madrasahAchRes.json());
+
+      if (cloudData && cloudData.initialized) {
+        setSiteSettings(cloudData.siteSettings);
+        if (cloudData.qrSettings) {
+          setQrSettings(cloudData.qrSettings);
+        } else if (qrRes.ok) {
+          setQrSettings(await qrRes.json());
+        }
+        setCategories(cloudData.categories);
+        setLinks(cloudData.links);
+        setAnnouncements(cloudData.announcements);
+        setRegistrations(cloudData.registrations);
+        setDocuments(cloudData.documents);
+        setCommitteeContacts(cloudData.committeeContacts);
+        setMadrasahAchievements(cloudData.madrasahAchievements);
+        if (isCloudAdminReady() || cloudData.studentAchievements.length > 0) {
+          setAchievements(cloudData.studentAchievements);
+        } else if (achRes.ok) {
+          setAchievements(await achRes.json());
+        }
+      } else {
+        if (catRes.ok) setCategories(await catRes.json());
+        if (linkRes.ok) setLinks(await linkRes.json());
+        if (annRes.ok) setAnnouncements(await annRes.json());
+        if (regRes.ok) setRegistrations(await regRes.json());
+        if (docRes.ok) setDocuments(await docRes.json());
+        if (settRes.ok) setSiteSettings(await settRes.json());
+        if (qrRes.ok) setQrSettings(await qrRes.json());
+        if (achRes.ok) setAchievements(await achRes.json());
+        if (contactsRes.ok) setCommitteeContacts(await contactsRes.json());
+        if (madrasahAchRes.ok) setMadrasahAchievements(await madrasahAchRes.json());
+      }
     } catch (err: any) {
       console.error('Failed to load admin data:', err);
       showNotification('error', 'Gagal memuat sebagian data.');
@@ -211,7 +290,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     loadAllData();
+    const unsubAuth = onFirebaseAuthChange((user) => {
+      setFirebaseUser(user);
+      if (isAuthorizedFirebaseAdmin(user)) {
+        loadAllData();
+      }
+    });
+    return () => unsubAuth();
   }, []);
+
+  const handleConnectGoogleCloud = async () => {
+    setIsCloudSyncing(true);
+    try {
+      const user = await signInAdminWithGoogle();
+      if (!isAuthorizedFirebaseAdmin(user)) {
+        showNotification(
+          'error',
+          `Akun ${user.email || 'ini'} belum terdaftar sebagai admin (${ADMIN_AUTHORIZED_EMAIL}).`
+        );
+        return;
+      }
+
+      const cloud = await loadAllAdminFromFirestore();
+      if (!cloud.initialized) {
+        await syncAllLocalToFirestore({
+          siteSettings,
+          qrSettings,
+          categories,
+          links,
+          announcements,
+          registrations,
+          documents,
+          committeeContacts,
+          madrasahAchievements,
+        });
+      }
+      showNotification('success', 'Cloud Firestore terhubung! Seluruh perubahan kini tersimpan permanen.');
+      await syncAfterChange();
+    } catch (err: any) {
+      showNotification('error', err?.message || 'Gagal menghubungkan Google Cloud Firestore.');
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  const handleForceSyncToCloud = async () => {
+    if (!isCloudAdminReady()) {
+      await handleConnectGoogleCloud();
+      return;
+    }
+    setIsCloudSyncing(true);
+    try {
+      await syncAllLocalToFirestore({
+        siteSettings,
+        qrSettings,
+        categories,
+        links,
+        announcements,
+        registrations,
+        documents,
+        committeeContacts,
+        madrasahAchievements,
+      });
+      showNotification('success', 'Seluruh data berhasil disinkronkan ke Cloud Firestore.');
+      await syncAfterChange();
+    } catch (err: any) {
+      showNotification('error', err?.message || 'Gagal menyinkronkan ke Cloud Firestore.');
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
 
   // Fetch GAS files when tab is selected
   useEffect(() => {
@@ -263,11 +411,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingCategory),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      const cloudReady = isCloudAdminReady();
 
-      if (!res.ok) {
+      if (!res.ok && !(cloudReady && res.status === 404)) {
         showNotification('error', data.error || 'Gagal menyimpan kategori.');
         return;
+      }
+
+      const savedCat: Category = data.category || {
+        id: editingCategory.id || crypto.randomUUID(),
+        name: editingCategory.name.trim(),
+        description: (editingCategory.description || '').trim(),
+        icon: editingCategory.icon || 'Folder',
+        order: Number(editingCategory.order ?? categories.length + 1),
+        isActive: editingCategory.isActive ?? true,
+        createdAt: editingCategory.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (cloudReady) {
+        await saveCategoryToFirestore(savedCat);
       }
 
       showNotification('success', `Kategori berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
@@ -288,10 +452,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const cloudReady = isCloudAdminReady();
+      if (!res.ok && !(cloudReady && res.status === 404)) {
         showNotification('error', data.error || 'Gagal menghapus kategori.');
         return;
+      }
+      if (cloudReady) {
+        await deleteCategoryFromFirestore(cat.id);
       }
       showNotification('success', `Kategori "${cat.name}" berhasil dihapus.`);
       await syncAfterChange();
@@ -315,11 +483,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingLink),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      const cloudReady = isCloudAdminReady();
 
-      if (!res.ok) {
+      if (!res.ok && !(cloudReady && res.status === 404)) {
         showNotification('error', data.error || 'Gagal menyimpan layanan.');
         return;
+      }
+
+      const savedLink: ServiceLink = data.link || {
+        id: editingLink.id || crypto.randomUUID(),
+        name: editingLink.name.trim(),
+        categoryId: editingLink.categoryId || '',
+        description: (editingLink.description || '').trim(),
+        iconType: editingLink.iconType || 'lucide',
+        icon: editingLink.icon || 'Globe',
+        targetUrl: editingLink.targetUrl.trim(),
+        targetOpen: editingLink.targetOpen === '_self' ? '_self' : '_blank',
+        order: Number(editingLink.order ?? links.length + 1),
+        isActive: editingLink.isActive ?? true,
+        clicksCount: Number(editingLink.clicksCount || 0),
+        createdAt: editingLink.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (cloudReady) {
+        await saveLinkToFirestore(savedLink);
       }
 
       showNotification('success', `Layanan berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
@@ -337,7 +526,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'POST',
         headers: authHeaders,
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const cloudReady = isCloudAdminReady();
+      if (res.ok || cloudReady) {
+        const dup: ServiceLink = data.link || {
+          ...link,
+          id: crypto.randomUUID(),
+          name: `${link.name} (Salinan)`,
+          order: link.order + 1,
+          clicksCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        if (cloudReady) {
+          await saveLinkToFirestore(dup);
+        }
         showNotification('success', `Layanan "${link.name}" berhasil digandakan.`);
         await syncAfterChange();
       }
@@ -356,7 +559,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
-      if (res.ok) {
+      const cloudReady = isCloudAdminReady();
+      if (res.ok || (cloudReady && res.status === 404)) {
+        if (cloudReady) {
+          await deleteLinkFromFirestore(link.id);
+        }
         showNotification('success', `Layanan "${link.name}" berhasil dihapus.`);
         await syncAfterChange();
       }
@@ -376,7 +583,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(siteSettings),
       });
-      if (res.ok) {
+      const cloudReady = isCloudAdminReady();
+      if (cloudReady) {
+        await saveSiteSettingsToFirestore(siteSettings);
+      }
+      if (res.ok || cloudReady) {
         showNotification('success', 'Pengaturan identitas dan tampilan portal berhasil disimpan & disinkronkan.');
         await syncAfterChange();
       } else {
@@ -399,7 +610,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(qrSettings),
       });
-      if (res.ok) {
+      const cloudReady = isCloudAdminReady();
+      if (cloudReady) {
+        await saveQrSettingsToFirestore(qrSettings);
+      }
+      if (res.ok || cloudReady) {
         showNotification('success', 'Pengaturan QR Code dan Poster berhasil diperbarui.');
         const url = qrSettings.portalUrl || window.location.origin;
         const qrRes = await fetch(
@@ -425,7 +640,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify({ status, notes: notes || '' }),
       });
-      if (res.ok) {
+      const cloudReady = isCloudAdminReady();
+      if (cloudReady) {
+        await verifyStudentAchievementInFirestore(id, status, notes || '');
+      }
+      if (res.ok || (cloudReady && res.status === 404)) {
         showNotification(
           'success',
           `Status prestasi berhasil diubah menjadi: ${status === 'verified' ? 'Terverifikasi' : 'Ditolak'}`
@@ -448,7 +667,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
-      if (res.ok) {
+      const cloudReady = isCloudAdminReady();
+      if (cloudReady) {
+        await deleteStudentAchievementFromFirestore(id);
+      }
+      if (res.ok || (cloudReady && res.status === 404)) {
         showNotification('success', 'Data prestasi berhasil dihapus.');
         await syncAfterChange();
       }
@@ -474,8 +697,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingMadrasahAchievement),
       });
+      const data = await res.json().catch(() => ({}));
+      const cloudReady = isCloudAdminReady();
 
-      if (res.ok) {
+      if (res.ok || (cloudReady && res.status === 404)) {
+        const savedItem: MadrasahAchievement = data.achievement || {
+          id: editingMadrasahAchievement.id || crypto.randomUUID(),
+          title: editingMadrasahAchievement.title.trim(),
+          category: editingMadrasahAchievement.category || 'Prestasi',
+          level: editingMadrasahAchievement.level || 'Tingkat Nasional',
+          recipient: editingMadrasahAchievement.recipient || 'MA PLUS MM',
+          year: editingMadrasahAchievement.year || String(new Date().getFullYear()),
+          photoUrl: editingMadrasahAchievement.photoUrl || '',
+          shortDescription: editingMadrasahAchievement.shortDescription || '',
+          order: Number(editingMadrasahAchievement.order ?? madrasahAchievements.length + 1),
+          isActive: editingMadrasahAchievement.isActive !== false,
+          createdAt: editingMadrasahAchievement.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        if (cloudReady) {
+          await saveMadrasahAchievementToFirestore(savedItem);
+        }
         showNotification(
           'success',
           `Prestasi Madrasah berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
@@ -483,7 +725,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setEditingMadrasahAchievement(null);
         await syncAfterChange();
       } else {
-        const data = await res.json();
         showNotification('error', data.error || 'Gagal menyimpan prestasi madrasah.');
       }
     } catch (err: any) {
@@ -499,7 +740,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
-      if (res.ok) {
+      const cloudReady = isCloudAdminReady();
+      if (cloudReady) {
+        await deleteMadrasahAchievementFromFirestore(id);
+      }
+      if (res.ok || (cloudReady && res.status === 404)) {
         showNotification('success', 'Prestasi madrasah berhasil dihapus.');
         await syncAfterChange();
       }
@@ -523,13 +768,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingContact),
       });
+      const data = await res.json().catch(() => ({}));
+      const cloudReady = isCloudAdminReady();
 
-      if (res.ok) {
+      if (res.ok || (cloudReady && res.status === 404)) {
+        const savedContact: CommitteeContact = data.contact || {
+          id: editingContact.id || crypto.randomUUID(),
+          name: (editingContact.name || '').trim(),
+          role: editingContact.role.trim(),
+          whatsappNumber: editingContact.whatsappNumber.trim(),
+          notes: editingContact.notes || '',
+          isAvailable: editingContact.isAvailable !== false,
+        };
+        if (cloudReady) {
+          await saveContactToFirestore(savedContact);
+        }
         showNotification('success', `Kontak panitia berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
         setEditingContact(null);
         await syncAfterChange();
       } else {
-        const data = await res.json();
         showNotification('error', data.error || 'Gagal menyimpan kontak panitia.');
       }
     } catch (err: any) {
@@ -545,7 +802,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
-      if (res.ok) {
+      const cloudReady = isCloudAdminReady();
+      if (cloudReady) {
+        await deleteContactFromFirestore(id);
+      }
+      if (res.ok || (cloudReady && res.status === 404)) {
         showNotification('success', 'Kontak panitia berhasil dihapus.');
         await syncAfterChange();
       }
@@ -610,6 +871,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (!res.ok) {
         showNotification('error', data.error || 'Gagal mengosongkan konten portal.');
         return;
+      }
+      if (isCloudAdminReady()) {
+        await clearPortalCollectionsInFirestore();
       }
       showNotification('success', 'Seluruh konten portal berhasil dikosongkan.');
       await syncAfterChange();
@@ -833,6 +1097,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Content Body */}
         <main className="flex-1 p-4 sm:p-8 overflow-y-auto">
+          {/* Cloud Firestore Sync Status Bar */}
+          <div
+            className={`mb-5 p-3.5 sm:p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs no-print ${
+              isAuthorizedFirebaseAdmin(firebaseUser)
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-amber-50 border-amber-200 text-amber-950'
+            }`}
+          >
+            <div className="flex items-start sm:items-center gap-2.5">
+              {isAuthorizedFirebaseAdmin(firebaseUser) ? (
+                <Cloud className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5 sm:mt-0" />
+              ) : (
+                <CloudOff className="w-5 h-5 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
+              )}
+              <div>
+                {isAuthorizedFirebaseAdmin(firebaseUser) ? (
+                  <>
+                    <p className="font-bold text-emerald-900">
+                      Cloud Firestore Aktif — Perubahan Tersimpan Permanen ({firebaseUser?.email})
+                    </p>
+                    <p className="text-[11px] text-emerald-700">
+                      Setiap perubahan langsung tersimpan di cloud dan tidak hilang setelah refresh atau deploy ulang.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-bold text-amber-950">
+                      Aktifkan Simpan Permanen Cloud Firestore (Agar Data Tidak Hilang Setelah Refresh)
+                    </p>
+                    <p className="text-[11px] text-amber-800">
+                      Hubungkan akun Google admin ({ADMIN_AUTHORIZED_EMAIL}) sekali klik untuk menyinkronkan data ke database cloud permanen.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {isAuthorizedFirebaseAdmin(firebaseUser) ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={isCloudSyncing}
+                    onClick={handleForceSyncToCloud}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-60"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+                    <span>Sinkronkan Cloud</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => signOutFirebase()}
+                    className="px-2.5 py-1.5 rounded-xl bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 font-semibold cursor-pointer"
+                  >
+                    Putus Cloud
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isCloudSyncing}
+                  onClick={handleConnectGoogleCloud}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60"
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>{isCloudSyncing ? 'Menghubungkan...' : 'Hubungkan Cloud Google'}</span>
+                </button>
+              )}
+            </div>
+          </div>
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
@@ -1152,12 +1486,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = () => setSiteSettings({ ...siteSettings, logoUrl: reader.result as string });
-                              reader.readAsDataURL(file);
+                              const compressed = await compressImageFileToDataUrl(file, 800, 400000);
+                              setSiteSettings({ ...siteSettings, logoUrl: compressed });
                             }}
                           />
                         </label>
@@ -1193,12 +1526,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = () => setSiteSettings({ ...siteSettings, faviconUrl: reader.result as string });
-                              reader.readAsDataURL(file);
+                              const compressed = await compressImageFileToDataUrl(file, 256, 200000);
+                              setSiteSettings({ ...siteSettings, faviconUrl: compressed });
                             }}
                           />
                         </label>
@@ -1235,12 +1567,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           type="file"
                           accept="image/*"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
-                            const reader = new FileReader();
-                            reader.onload = () => setSiteSettings({ ...siteSettings, bannerUrl: reader.result as string });
-                            reader.readAsDataURL(file);
+                            const compressed = await compressImageFileToDataUrl(file, 1400, 520000);
+                            setSiteSettings({ ...siteSettings, bannerUrl: compressed });
                           }}
                         />
                       </label>
@@ -1383,7 +1714,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               headers: authHeaders,
                               body: JSON.stringify(updated),
                             });
-                            if (res.ok) {
+                            const cloudReady = isCloudAdminReady();
+                            if (cloudReady) {
+                              await saveSiteSettingsToFirestore(updated);
+                            }
+                            if (res.ok || cloudReady) {
                               showNotification('success', `"${item.label}" diperbarui dan langsung disinkronkan.`);
                               await syncAfterChange();
                             } else {
@@ -2388,7 +2723,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 method: 'DELETE',
                                 headers: authHeaders,
                               });
-                              if (res.ok) {
+                              const cloudReady = isCloudAdminReady();
+                              if (cloudReady) {
+                                await deleteAnnouncementFromFirestore(ann.id);
+                              }
+                              if (res.ok || (cloudReady && res.status === 404)) {
                                 showNotification('success', 'Pengumuman berhasil dihapus.');
                                 await syncAfterChange();
                               }
@@ -2479,7 +2818,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 method: 'DELETE',
                                 headers: authHeaders,
                               });
-                              if (res.ok) {
+                              const cloudReady = isCloudAdminReady();
+                              if (cloudReady) {
+                                await deleteRegistrationFromFirestore(reg.id);
+                              }
+                              if (res.ok || (cloudReady && res.status === 404)) {
                                 showNotification('success', 'Program pendaftaran berhasil dihapus.');
                                 await syncAfterChange();
                               }
@@ -2558,7 +2901,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 method: 'DELETE',
                                 headers: authHeaders,
                               });
-                              if (res.ok) {
+                              const cloudReady = isCloudAdminReady();
+                              if (cloudReady) {
+                                await deleteDocumentFromFirestore(doc.id);
+                              }
+                              if (res.ok || (cloudReady && res.status === 404)) {
                                 showNotification('success', 'Dokumen berhasil dihapus.');
                                 await syncAfterChange();
                               }
@@ -2755,18 +3102,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            setEditingLink({
-                              ...editingLink,
-                              iconType: 'upload',
-                              icon: reader.result as string,
-                            });
-                          };
-                          reader.readAsDataURL(file);
+                          const compressed = await compressImageFileToDataUrl(file, 512, 350000);
+                          setEditingLink({
+                            ...editingLink,
+                            iconType: 'upload',
+                            icon: compressed,
+                          });
                         }
                       }}
                     />
@@ -2984,10 +3328,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   headers: authHeaders,
                   body: JSON.stringify(editingAnnouncement),
                 });
-                const data = await res.json();
-                if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                const cloudReady = isCloudAdminReady();
+                if (!res.ok && !(cloudReady && res.status === 404)) {
                   showNotification('error', data.error || 'Gagal menyimpan pengumuman.');
                   return;
+                }
+                const savedAnn: Announcement = data.announcement || {
+                  id: editingAnnouncement.id || crypto.randomUUID(),
+                  title: (editingAnnouncement.title || '').trim(),
+                  content: (editingAnnouncement.content || '').trim(),
+                  imageUrl: editingAnnouncement.imageUrl || '',
+                  publishDate: editingAnnouncement.publishDate || new Date().toISOString().split('T')[0],
+                  expiryDate: editingAnnouncement.expiryDate || '',
+                  status: editingAnnouncement.status === 'draft' ? 'draft' : 'published',
+                  createdAt: editingAnnouncement.createdAt || new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                };
+                if (cloudReady) {
+                  await saveAnnouncementToFirestore(savedAnn);
                 }
                 showNotification(
                   'success',
@@ -3027,17 +3386,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            setEditingAnnouncement({
-                              ...editingAnnouncement,
-                              imageUrl: reader.result as string,
-                            });
-                          };
-                          reader.readAsDataURL(file);
+                          const compressed = await compressImageFileToDataUrl(file, 1280, 520000);
+                          setEditingAnnouncement({
+                            ...editingAnnouncement,
+                            imageUrl: compressed,
+                          });
                         }
                       }}
                     />
@@ -3155,10 +3511,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   headers: authHeaders,
                   body: JSON.stringify(editingRegistration),
                 });
-                const data = await res.json();
-                if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                const cloudReady = isCloudAdminReady();
+                if (!res.ok && !(cloudReady && res.status === 404)) {
                   showNotification('error', data.error || 'Gagal menyimpan program pendaftaran.');
                   return;
+                }
+                const savedReg: Registration = data.registration || {
+                  id: editingRegistration.id || crypto.randomUUID(),
+                  title: (editingRegistration.title || '').trim(),
+                  description: (editingRegistration.description || '').trim(),
+                  bannerUrl: editingRegistration.bannerUrl || '',
+                  formUrl: (editingRegistration.formUrl || '').trim(),
+                  startDate: editingRegistration.startDate || '',
+                  endDate: editingRegistration.endDate || '',
+                  status: editingRegistration.status === 'closed' ? 'closed' : 'open',
+                  order: Number(editingRegistration.order ?? registrations.length + 1),
+                  isActive: editingRegistration.isActive ?? true,
+                  createdAt: editingRegistration.createdAt || new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                };
+                if (cloudReady) {
+                  await saveRegistrationToFirestore(savedReg);
                 }
                 showNotification(
                   'success',
@@ -3282,10 +3656,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   headers: authHeaders,
                   body: JSON.stringify(editingDocument),
                 });
-                const data = await res.json();
-                if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                const cloudReady = isCloudAdminReady();
+                if (!res.ok && !(cloudReady && res.status === 404)) {
                   showNotification('error', data.error || 'Gagal menyimpan dokumen.');
                   return;
+                }
+                const savedDoc: DocumentItem = data.document || {
+                  id: editingDocument.id || crypto.randomUUID(),
+                  title: (editingDocument.title || '').trim(),
+                  description: (editingDocument.description || '').trim(),
+                  category: (editingDocument.category || 'Umum').trim(),
+                  fileUrl: (editingDocument.fileUrl || '').trim(),
+                  fileType: (editingDocument.fileType || 'PDF').toUpperCase(),
+                  fileSize: editingDocument.fileSize || '0 KB',
+                  downloadCount: Number(editingDocument.downloadCount || 0),
+                  isActive: editingDocument.isActive ?? true,
+                  createdAt: editingDocument.createdAt || new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                };
+                if (cloudReady) {
+                  await saveDocumentToFirestore(savedDoc);
                 }
                 showNotification('success', `Dokumen berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
                 setEditingDocument(null);
@@ -3782,21 +4173,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 3 * 1024 * 1024) {
-                        showNotification('error', 'Ukuran foto maksimal 3 MB.');
+                      if (file.size > 5 * 1024 * 1024) {
+                        showNotification('error', 'Ukuran foto maksimal 5 MB.');
                         return;
                       }
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        setEditingMadrasahAchievement({
-                          ...editingMadrasahAchievement,
-                          photoUrl: reader.result as string,
-                        });
-                      };
-                      reader.readAsDataURL(file);
+                      const compressed = await compressImageFileToDataUrl(file, 1280, 520000);
+                      setEditingMadrasahAchievement({
+                        ...editingMadrasahAchievement,
+                        photoUrl: compressed,
+                      });
                     }}
                     className="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-800 hover:file:bg-emerald-100 cursor-pointer"
                   />
