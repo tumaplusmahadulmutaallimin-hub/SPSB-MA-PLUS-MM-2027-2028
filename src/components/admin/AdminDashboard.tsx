@@ -46,6 +46,8 @@ import {
 import type { User as FirebaseUser } from 'firebase/auth';
 import {
   ADMIN_AUTHORIZED_EMAIL,
+  AISTUDIO_SHARED_APP_URL,
+  FIREBASE_AUTHORIZED_DOMAINS_URL,
   isAuthorizedFirebaseAdmin,
   onFirebaseAuthChange,
   signInAdminWithGoogle,
@@ -139,6 +141,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -301,6 +305,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleConnectGoogleCloud = async () => {
     setIsCloudSyncing(true);
+    setUnauthorizedDomain(null);
     try {
       const user = await signInAdminWithGoogle();
       if (!isAuthorizedFirebaseAdmin(user)) {
@@ -328,6 +333,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showNotification('success', 'Cloud Firestore terhubung! Seluruh perubahan kini tersimpan permanen.');
       await syncAfterChange();
     } catch (err: any) {
+      if (err?.code === 'auth/unauthorized-domain' || String(err?.message || '').includes('unauthorized-domain')) {
+        setUnauthorizedDomain(err?.unauthorizedDomain || window.location.hostname);
+      }
       showNotification('error', err?.message || 'Gagal menghubungkan Google Cloud Firestore.');
     } finally {
       setIsCloudSyncing(false);
@@ -414,7 +422,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const data = await res.json().catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
-      if (!res.ok && !(cloudReady && res.status === 404)) {
+      if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal menyimpan kategori.');
         return;
       }
@@ -454,7 +462,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       const data = await res.json().catch(() => ({}));
       const cloudReady = isCloudAdminReady();
-      if (!res.ok && !(cloudReady && res.status === 404)) {
+      if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal menghapus kategori.');
         return;
       }
@@ -486,7 +494,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const data = await res.json().catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
-      if (!res.ok && !(cloudReady && res.status === 404)) {
+      if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal menyimpan layanan.');
         return;
       }
@@ -560,7 +568,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
       });
       const cloudReady = isCloudAdminReady();
-      if (res.ok || (cloudReady && res.status === 404)) {
+      if (res.ok || cloudReady) {
         if (cloudReady) {
           await deleteLinkFromFirestore(link.id);
         }
@@ -644,7 +652,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (cloudReady) {
         await verifyStudentAchievementInFirestore(id, status, notes || '');
       }
-      if (res.ok || (cloudReady && res.status === 404)) {
+      if (res.ok || cloudReady) {
         showNotification(
           'success',
           `Status prestasi berhasil diubah menjadi: ${status === 'verified' ? 'Terverifikasi' : 'Ditolak'}`
@@ -671,7 +679,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (cloudReady) {
         await deleteStudentAchievementFromFirestore(id);
       }
-      if (res.ok || (cloudReady && res.status === 404)) {
+      if (res.ok || cloudReady) {
         showNotification('success', 'Data prestasi berhasil dihapus.');
         await syncAfterChange();
       }
@@ -700,7 +708,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const data = await res.json().catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
-      if (res.ok || (cloudReady && res.status === 404)) {
+      if (res.ok || cloudReady) {
         const savedItem: MadrasahAchievement = data.achievement || {
           id: editingMadrasahAchievement.id || crypto.randomUUID(),
           title: editingMadrasahAchievement.title.trim(),
@@ -744,7 +752,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (cloudReady) {
         await deleteMadrasahAchievementFromFirestore(id);
       }
-      if (res.ok || (cloudReady && res.status === 404)) {
+      if (res.ok || cloudReady) {
         showNotification('success', 'Prestasi madrasah berhasil dihapus.');
         await syncAfterChange();
       }
@@ -771,7 +779,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const data = await res.json().catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
-      if (res.ok || (cloudReady && res.status === 404)) {
+      if (res.ok || cloudReady) {
         const savedContact: CommitteeContact = data.contact || {
           id: editingContact.id || crypto.randomUUID(),
           name: (editingContact.name || '').trim(),
@@ -806,7 +814,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (cloudReady) {
         await deleteContactFromFirestore(id);
       }
-      if (res.ok || (cloudReady && res.status === 404)) {
+      if (res.ok || cloudReady) {
         showNotification('success', 'Kontak panitia berhasil dihapus.');
         await syncAfterChange();
       }
@@ -867,12 +875,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'POST',
         headers: authHeaders,
       });
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const cloudReady = isCloudAdminReady();
+      if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal mengosongkan konten portal.');
         return;
       }
-      if (isCloudAdminReady()) {
+      if (cloudReady) {
         await clearPortalCollectionsInFirestore();
       }
       showNotification('success', 'Seluruh konten portal berhasil dikosongkan.');
@@ -1099,73 +1108,136 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <main className="flex-1 p-4 sm:p-8 overflow-y-auto">
           {/* Cloud Firestore Sync Status Bar */}
           <div
-            className={`mb-5 p-3.5 sm:p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs no-print ${
+            className={`mb-5 p-3.5 sm:p-4 rounded-2xl border text-xs no-print ${
               isAuthorizedFirebaseAdmin(firebaseUser)
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : unauthorizedDomain
+                ? 'bg-rose-50 border-rose-200 text-rose-950'
                 : 'bg-amber-50 border-amber-200 text-amber-950'
             }`}
           >
-            <div className="flex items-start sm:items-center gap-2.5">
-              {isAuthorizedFirebaseAdmin(firebaseUser) ? (
-                <Cloud className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5 sm:mt-0" />
-              ) : (
-                <CloudOff className="w-5 h-5 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
-              )}
-              <div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start sm:items-center gap-2.5">
+                {isAuthorizedFirebaseAdmin(firebaseUser) ? (
+                  <Cloud className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5 sm:mt-0" />
+                ) : (
+                  <CloudOff className={`w-5 h-5 shrink-0 mt-0.5 sm:mt-0 ${unauthorizedDomain ? 'text-rose-600' : 'text-amber-700'}`} />
+                )}
+                <div>
+                  {isAuthorizedFirebaseAdmin(firebaseUser) ? (
+                    <>
+                      <p className="font-bold text-emerald-900">
+                        Cloud Firestore Aktif — Perubahan Tersimpan Permanen ({firebaseUser?.email})
+                      </p>
+                      <p className="text-[11px] text-emerald-700">
+                        Setiap perubahan langsung tersimpan di cloud dan tidak hilang setelah refresh atau deploy ulang.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className={`font-bold ${unauthorizedDomain ? 'text-rose-950' : 'text-amber-950'}`}>
+                        Aktifkan Simpan Permanen Cloud Firestore (Agar Data Tidak Hilang Setelah Refresh)
+                      </p>
+                      <p className={`text-[11px] ${unauthorizedDomain ? 'text-rose-800' : 'text-amber-800'}`}>
+                        Hubungkan akun Google admin ({ADMIN_AUTHORIZED_EMAIL}) sekali klik untuk menyinkronkan data ke database cloud permanen.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
                 {isAuthorizedFirebaseAdmin(firebaseUser) ? (
                   <>
-                    <p className="font-bold text-emerald-900">
-                      Cloud Firestore Aktif — Perubahan Tersimpan Permanen ({firebaseUser?.email})
-                    </p>
-                    <p className="text-[11px] text-emerald-700">
-                      Setiap perubahan langsung tersimpan di cloud dan tidak hilang setelah refresh atau deploy ulang.
-                    </p>
+                    <button
+                      type="button"
+                      disabled={isCloudSyncing}
+                      onClick={handleForceSyncToCloud}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-60"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+                      <span>Sinkronkan Cloud</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => signOutFirebase()}
+                      className="px-2.5 py-1.5 rounded-xl bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 font-semibold cursor-pointer"
+                    >
+                      Putus Cloud
+                    </button>
                   </>
                 ) : (
-                  <>
-                    <p className="font-bold text-amber-950">
-                      Aktifkan Simpan Permanen Cloud Firestore (Agar Data Tidak Hilang Setelah Refresh)
-                    </p>
-                    <p className="text-[11px] text-amber-800">
-                      Hubungkan akun Google admin ({ADMIN_AUTHORIZED_EMAIL}) sekali klik untuk menyinkronkan data ke database cloud permanen.
-                    </p>
-                  </>
+                  <button
+                    type="button"
+                    disabled={isCloudSyncing}
+                    onClick={handleConnectGoogleCloud}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60"
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>{isCloudSyncing ? 'Menghubungkan...' : 'Hubungkan Cloud Google'}</span>
+                  </button>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {isAuthorizedFirebaseAdmin(firebaseUser) ? (
-                <>
-                  <button
-                    type="button"
-                    disabled={isCloudSyncing}
-                    onClick={handleForceSyncToCloud}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-60"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
-                    <span>Sinkronkan Cloud</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => signOutFirebase()}
-                    className="px-2.5 py-1.5 rounded-xl bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 font-semibold cursor-pointer"
-                  >
-                    Putus Cloud
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  disabled={isCloudSyncing}
-                  onClick={handleConnectGoogleCloud}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs cursor-pointer disabled:opacity-60"
-                >
-                  <Cloud className="w-3.5 h-3.5" />
-                  <span>{isCloudSyncing ? 'Menghubungkan...' : 'Hubungkan Cloud Google'}</span>
-                </button>
-              )}
-            </div>
+            {!isAuthorizedFirebaseAdmin(firebaseUser) && unauthorizedDomain && (
+              <div className="mt-3 pt-3 border-t border-rose-200/80 space-y-2.5 text-[11px] text-rose-900">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">
+                    Domain Vercel <strong>{unauthorizedDomain}</strong> belum didaftarkan di daftar <em>Authorized domains</em> Firebase Authentication. Lakukan langkah singkat sekali ini (tanpa perlu deploy ulang):
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-xl border border-rose-200 p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
+                      {unauthorizedDomain}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(unauthorizedDomain);
+                          setCopiedDomain(true);
+                          setTimeout(() => setCopiedDomain(false), 2500);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                      >
+                        {copiedDomain ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedDomain ? 'Domain Tersalin!' : '1. Salin Domain'}</span>
+                      </button>
+                      <a
+                        href={FIREBASE_AUTHORIZED_DOMAINS_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>2. Buka Pengaturan Domain Firebase</span>
+                      </a>
+                    </div>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-700 leading-relaxed">
+                    <li>Klik <strong>Buka Pengaturan Domain Firebase</strong> (login dengan <strong>{ADMIN_AUTHORIZED_EMAIL}</strong>).</li>
+                    <li>Buka tab <strong>Authorized domains</strong> → klik <strong>Add domain</strong> → tempel <strong>{unauthorizedDomain}</strong> → klik <strong>Add</strong>.</li>
+                    <li>Kembali ke halaman ini lalu klik <strong>Hubungkan Cloud Google</strong> kembali.</li>
+                  </ol>
+                  <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                    Alternatif instan: Anda juga dapat menghubungkan &amp; mengelola data melalui{' '}
+                    <a
+                      href={AISTUDIO_SHARED_APP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-emerald-700 underline"
+                    >
+                      Portal Resmi AI Studio
+                    </a>{' '}
+                    — perubahan otomatis tampil di domain Vercel ini secara <em>real-time</em>.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
@@ -1175,7 +1247,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                   <span className="text-xs text-slate-500 font-medium">Layanan Aktif</span>
                   <p className="text-2xl font-extrabold text-slate-900 mt-1">
-                    {dashboardStats?.stats?.totalActiveServices || 0}
+                    {Math.max(
+                      dashboardStats?.stats?.totalActiveServices || 0,
+                      links.filter((l) => l.isActive).length
+                    )}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">Ikon siap diakses</p>
                 </div>
@@ -1198,7 +1273,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                   <span className="text-xs text-slate-500 font-medium">Total Klik Layanan</span>
                   <p className="text-2xl font-extrabold text-emerald-600 mt-1">
-                    {dashboardStats?.stats?.totalClicks || 0}
+                    {Math.max(
+                      dashboardStats?.stats?.totalClicks || 0,
+                      links.reduce((sum, l) => sum + (l.clicksCount || 0), 0)
+                    )}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">Aktivitas klik riil</p>
                 </div>
@@ -2456,15 +2534,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[11px] text-slate-500">Total Klik Tautan</span>
-                    <p className="text-xl font-bold text-emerald-700">{dashboardStats?.stats?.totalClicks || 0}</p>
+                    <p className="text-xl font-bold text-emerald-700">
+                      {Math.max(
+                        dashboardStats?.stats?.totalClicks || 0,
+                        links.reduce((sum, l) => sum + (l.clicksCount || 0), 0)
+                      )}
+                    </p>
                   </div>
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[11px] text-slate-500">Layanan Aktif</span>
-                    <p className="text-xl font-bold text-slate-900">{dashboardStats?.stats?.totalActiveServices || 0}</p>
+                    <p className="text-xl font-bold text-slate-900">
+                      {Math.max(
+                        dashboardStats?.stats?.totalActiveServices || 0,
+                        links.filter((l) => l.isActive).length
+                      )}
+                    </p>
                   </div>
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[11px] text-slate-500">Kategori Aktif</span>
-                    <p className="text-xl font-bold text-slate-900">{dashboardStats?.stats?.totalCategories || 0}</p>
+                    <p className="text-xl font-bold text-slate-900">
+                      {Math.max(
+                        dashboardStats?.stats?.totalCategories || 0,
+                        categories.filter((c) => c.isActive).length
+                      )}
+                    </p>
                   </div>
                 </div>
 
@@ -2727,7 +2820,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (cloudReady) {
                                 await deleteAnnouncementFromFirestore(ann.id);
                               }
-                              if (res.ok || (cloudReady && res.status === 404)) {
+                              if (res.ok || cloudReady) {
                                 showNotification('success', 'Pengumuman berhasil dihapus.');
                                 await syncAfterChange();
                               }
@@ -2822,7 +2915,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (cloudReady) {
                                 await deleteRegistrationFromFirestore(reg.id);
                               }
-                              if (res.ok || (cloudReady && res.status === 404)) {
+                              if (res.ok || cloudReady) {
                                 showNotification('success', 'Program pendaftaran berhasil dihapus.');
                                 await syncAfterChange();
                               }
@@ -2905,7 +2998,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (cloudReady) {
                                 await deleteDocumentFromFirestore(doc.id);
                               }
-                              if (res.ok || (cloudReady && res.status === 404)) {
+                              if (res.ok || cloudReady) {
                                 showNotification('success', 'Dokumen berhasil dihapus.');
                                 await syncAfterChange();
                               }
@@ -3330,7 +3423,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 });
                 const data = await res.json().catch(() => ({}));
                 const cloudReady = isCloudAdminReady();
-                if (!res.ok && !(cloudReady && res.status === 404)) {
+                if (!res.ok && !cloudReady) {
                   showNotification('error', data.error || 'Gagal menyimpan pengumuman.');
                   return;
                 }
@@ -3513,7 +3606,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 });
                 const data = await res.json().catch(() => ({}));
                 const cloudReady = isCloudAdminReady();
-                if (!res.ok && !(cloudReady && res.status === 404)) {
+                if (!res.ok && !cloudReady) {
                   showNotification('error', data.error || 'Gagal menyimpan program pendaftaran.');
                   return;
                 }
@@ -3658,7 +3751,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 });
                 const data = await res.json().catch(() => ({}));
                 const cloudReady = isCloudAdminReady();
-                if (!res.ok && !(cloudReady && res.status === 404)) {
+                if (!res.ok && !cloudReady) {
                   showNotification('error', data.error || 'Gagal menyimpan dokumen.');
                   return;
                 }

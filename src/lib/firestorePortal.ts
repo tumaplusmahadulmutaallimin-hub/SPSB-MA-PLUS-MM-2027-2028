@@ -398,50 +398,87 @@ export function subscribePublicPortalFromFirestore(
 // ------------------------------------------------------------
 
 export async function loadAllAdminFromFirestore() {
-  const settingsSnap = await getDoc(doc(db, 'site_settings', 'default'));
+  let settingsSnap;
+  try {
+    settingsSnap = await getDocFromServer(doc(db, 'site_settings', 'default'));
+  } catch {
+    settingsSnap = await getDoc(doc(db, 'site_settings', 'default'));
+  }
+
   if (!settingsSnap.exists()) {
     return { initialized: false } as const;
   }
 
+  const adminReady = isCloudAdminReady();
+  const safeGetDocs = <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null);
+
   const [qrSnap, catSnap, linkSnap, annSnap, regSnap, docSnap, contactSnap, madAchSnap, stuAchSnap] =
     await Promise.all([
-      getDoc(doc(db, 'qr_settings', 'default')),
-      getDocs(collection(db, 'categories')),
-      getDocs(collection(db, 'links')),
-      getDocs(collection(db, 'announcements')),
-      getDocs(collection(db, 'registrations')),
-      getDocs(collection(db, 'documents')),
-      getDocs(collection(db, 'committee_contacts')),
-      getDocs(collection(db, 'madrasah_achievements')),
-      getDocs(collection(db, 'student_achievements')),
+      safeGetDocs(getDoc(doc(db, 'qr_settings', 'default'))),
+      safeGetDocs(
+        adminReady
+          ? getDocs(collection(db, 'categories'))
+          : getDocs(query(collection(db, 'categories'), where('isActive', '==', true)))
+      ),
+      safeGetDocs(
+        adminReady
+          ? getDocs(collection(db, 'links'))
+          : getDocs(query(collection(db, 'links'), where('isActive', '==', true)))
+      ),
+      safeGetDocs(
+        adminReady
+          ? getDocs(collection(db, 'announcements'))
+          : getDocs(query(collection(db, 'announcements'), where('status', '==', 'published')))
+      ),
+      safeGetDocs(
+        adminReady
+          ? getDocs(collection(db, 'registrations'))
+          : getDocs(query(collection(db, 'registrations'), where('isActive', '==', true)))
+      ),
+      safeGetDocs(
+        adminReady
+          ? getDocs(collection(db, 'documents'))
+          : getDocs(query(collection(db, 'documents'), where('isActive', '==', true)))
+      ),
+      safeGetDocs(
+        adminReady
+          ? getDocs(collection(db, 'committee_contacts'))
+          : getDocs(query(collection(db, 'committee_contacts'), where('isAvailable', '==', true)))
+      ),
+      safeGetDocs(
+        adminReady
+          ? getDocs(collection(db, 'madrasah_achievements'))
+          : getDocs(query(collection(db, 'madrasah_achievements'), where('isActive', '==', true)))
+      ),
+      adminReady ? safeGetDocs(getDocs(collection(db, 'student_achievements'))) : Promise.resolve(null),
     ]);
 
   return {
     initialized: true as const,
     siteSettings: mapSiteSettings(settingsSnap.data()),
-    qrSettings: qrSnap.exists() ? mapQrSettings(qrSnap.data()) : null,
-    categories: catSnap.docs
+    qrSettings: qrSnap && qrSnap.exists() ? mapQrSettings(qrSnap.data()) : null,
+    categories: (catSnap?.docs || [])
       .map((d) => ({ ...(d.data() as any), id: d.id, createdAt: toIsoString(d.data().createdAt), updatedAt: toIsoString(d.data().updatedAt) }) as Category)
       .sort((a, b) => a.order - b.order),
-    links: linkSnap.docs
+    links: (linkSnap?.docs || [])
       .map((d) => ({ ...(d.data() as any), id: d.id, createdAt: toIsoString(d.data().createdAt), updatedAt: toIsoString(d.data().updatedAt) }) as ServiceLink)
       .sort((a, b) => a.order - b.order),
-    announcements: annSnap.docs
+    announcements: (annSnap?.docs || [])
       .map((d) => ({ ...(d.data() as any), id: d.id, createdAt: toIsoString(d.data().createdAt), updatedAt: toIsoString(d.data().updatedAt) }) as Announcement)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    registrations: regSnap.docs
+    registrations: (regSnap?.docs || [])
       .map((d) => ({ ...(d.data() as any), id: d.id, createdAt: toIsoString(d.data().createdAt), updatedAt: toIsoString(d.data().updatedAt) }) as Registration)
       .sort((a, b) => a.order - b.order),
-    documents: docSnap.docs
+    documents: (docSnap?.docs || [])
       .map((d) => ({ ...(d.data() as any), id: d.id, createdAt: toIsoString(d.data().createdAt), updatedAt: toIsoString(d.data().updatedAt) }) as DocumentItem)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    committeeContacts: contactSnap.docs.map(
+    committeeContacts: (contactSnap?.docs || []).map(
       (d) => ({ ...(d.data() as any), id: d.id }) as CommitteeContact
     ),
-    madrasahAchievements: madAchSnap.docs
+    madrasahAchievements: (madAchSnap?.docs || [])
       .map((d) => ({ ...(d.data() as any), id: d.id, createdAt: toIsoString(d.data().createdAt), updatedAt: toIsoString(d.data().updatedAt) }) as MadrasahAchievement)
       .sort((a, b) => a.order - b.order),
-    studentAchievements: stuAchSnap.docs
+    studentAchievements: (stuAchSnap?.docs || [])
       .map((d) => ({
         ...(d.data() as any),
         id: d.id,
