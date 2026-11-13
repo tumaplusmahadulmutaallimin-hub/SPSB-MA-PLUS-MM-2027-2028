@@ -42,6 +42,14 @@ import {
   X,
   Cloud,
   CloudOff,
+  Activity,
+  Wifi,
+  WifiOff,
+  Clock,
+  UserCheck,
+  UserX,
+  Shield,
+  Server,
 } from 'lucide-react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import {
@@ -72,12 +80,18 @@ import {
   saveDocumentToFirestore,
   saveLinkToFirestore,
   saveMadrasahAchievementToFirestore,
+  savePortalUserDirectoryInFirestore,
   saveQrSettingsToFirestore,
   saveRegistrationToFirestore,
   saveSiteSettingsToFirestore,
+  subscribeMonitoringFromFirestore,
   syncAllLocalToFirestore,
   verifyStudentAchievementInFirestore,
+  type CloudMonitoringSnapshot,
 } from '../../lib/firestorePortal';
+import { parseJsonSafe } from '../../lib/http';
+import { recordAdminCloudAction, sendHeartbeat } from '../../lib/telemetry';
+import QRCode from 'qrcode';
 import {
   AuthSession,
   Category,
@@ -92,11 +106,26 @@ import {
   StudentAchievement,
   CommitteeContact,
   MadrasahAchievement,
+  MonitoringSummary,
+  UserSessionRecord,
+  PortalEventRecord,
 } from '../../types';
 import { IconRenderer, AVAILABLE_LUCIDE_ICONS } from '../common/IconRenderer';
 import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../../lib/brandAssets';
 
 const ADMIN_TAB_STORAGE_KEY = 'PORTAL_ADMIN_ACTIVE_TAB_V1';
+const CLIENT_ONLINE_WINDOW_MS = 60 * 1000;
+
+function formatDurationSeconds(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds || 0));
+  if (s < 60) return `${s} dtk`;
+  const m = Math.floor(s / 60);
+  const remS = s % 60;
+  if (m < 60) return `${m} mnt ${remS} dtk`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h} jam ${remM} mnt`;
+}
 
 interface AdminDashboardProps {
   session: AuthSession;
@@ -130,10 +159,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onViewPublicPortal,
   onDataUpdated,
 }) => {
+  const isFullAdmin = session.user.role === 'super_admin' || session.user.role === 'admin';
+  const allowedTabsForRole: TabType[] = isFullAdmin
+    ? [
+        'overview',
+        'identity',
+        'home_settings',
+        'links',
+        'categories',
+        'achievements',
+        'contacts',
+        'registrations',
+        'announcements',
+        'documents',
+        'qrcode',
+        'analytics',
+        'users',
+        'system',
+        'backup',
+        'logs',
+        'gas_export',
+      ]
+    : ['overview', 'announcements', 'analytics', 'logs'];
+
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     try {
       const saved = sessionStorage.getItem(ADMIN_TAB_STORAGE_KEY) as TabType | null;
-      if (saved) return saved;
+      if (saved && allowedTabsForRole.includes(saved)) return saved;
     } catch {
       // ignore
     }
@@ -149,12 +201,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
+    if (!allowedTabsForRole.includes(activeTab)) {
+      setActiveTab('overview');
+      return;
+    }
     try {
       sessionStorage.setItem(ADMIN_TAB_STORAGE_KEY, activeTab);
     } catch {
       // ignore
     }
+    void sendHeartbeat({
+      currentPath: '/admin',
+      currentMenu: `Admin: ${activeTab}`,
+      session,
+    });
   }, [activeTab]);
+
+  // Real-time monitoring state
+  const [monitoringPeriod, setMonitoringPeriod] = useState<'today' | '7d' | '30d' | 'all'>('7d');
+  const [apiMonitoring, setApiMonitoring] = useState<MonitoringSummary | null>(null);
+  const [cloudMonitoring, setCloudMonitoring] = useState<CloudMonitoringSnapshot | null>(null);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
+  const [apiLatencyMs, setApiLatencyMs] = useState<number | null>(null);
+  const [lastMonitoringSync, setLastMonitoringSync] = useState<string | null>(null);
 
   // Data states
   const [dashboardStats, setDashboardStats] = useState<any>(null);
@@ -203,6 +273,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setFeedbackMessage(null), 4000);
   };
 
+  const fetchMonitoring = async (period = monitoringPeriod) => {
+    setMonitoringLoading(true);
+    const t0 = performance.now();
+    try {
+      const res = await fetch(`/api/admin/monitoring?period=${encodeURIComponent(period)}&ts=${Date.now()}`, {
+        headers: authHeaders,
+        cache: 'no-store',
+      });
+      const elapsed = Math.round(performance.now() - t0);
+      setApiLatencyMs(elapsed);
+      if (!res.ok) {
+        const errData = await parseJsonSafe(res).catch(() => ({} as any));
+        throw new Error(errData?.error || `Gagal memuat monitoring (HTTP ${res.status})`);
+      }
+      const data = await parseJsonSafe<MonitoringSummary>(res);
+      setApiMonitoring(data);
+      setMonitoringError(null);
+      setLastMonitoringSync(new Date().toISOString());
+    } catch (err: any) {
+      setMonitoringError(err?.message || 'Gagal menghubungi API monitoring.');
+    } finally {
+      setMonitoringLoading(false);
+    }
+  };
+
   // Initial & synced data loading (cache: no-store)
   const loadAllData = async () => {
     setLoading(true);
@@ -234,25 +329,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         fetch('/api/admin/settings', fetchOpts),
         fetch('/api/admin/qr-settings', fetchOpts),
         fetch('/api/admin/activity-logs', fetchOpts),
-        fetch('/api/admin/users', fetchOpts),
-        fetch('/api/admin/backups', fetchOpts),
+        isFullAdmin ? fetch('/api/admin/users', fetchOpts) : Promise.resolve(null),
+        isFullAdmin ? fetch('/api/admin/backups', fetchOpts) : Promise.resolve(null),
         fetch('/api/admin/achievements', fetchOpts),
         fetch('/api/admin/committee-contacts', fetchOpts),
         fetch('/api/admin/madrasah-achievements', fetchOpts),
         loadAllAdminFromFirestore().catch(() => null),
       ]);
 
-      if (dashRes.ok) setDashboardStats(await dashRes.json());
-      if (logsRes.ok) setActivityLogs(await logsRes.json());
-      if (usersRes.ok) setUsersList(await usersRes.json());
-      if (backupsRes.ok) setBackupLogs(await backupsRes.json());
+      if (dashRes.ok) setDashboardStats(await parseJsonSafe(dashRes).catch(() => null));
+      if (logsRes.ok) setActivityLogs(await parseJsonSafe(logsRes).catch(() => []));
+      if (usersRes && usersRes.ok) {
+        const loadedUsers = await parseJsonSafe<any[]>(usersRes).catch(() => []);
+        setUsersList(loadedUsers);
+        if (isCloudAdminReady() && Array.isArray(loadedUsers)) {
+          loadedUsers.forEach((u: any) => {
+            void savePortalUserDirectoryInFirestore(u);
+          });
+        }
+      }
+      if (backupsRes && backupsRes.ok) setBackupLogs(await parseJsonSafe(backupsRes).catch(() => []));
 
       if (cloudData && cloudData.initialized) {
         setSiteSettings(cloudData.siteSettings);
         if (cloudData.qrSettings) {
           setQrSettings(cloudData.qrSettings);
         } else if (qrRes.ok) {
-          setQrSettings(await qrRes.json());
+          setQrSettings(await parseJsonSafe(qrRes).catch(() => null));
         }
         setCategories(cloudData.categories);
         setLinks(cloudData.links);
@@ -264,19 +367,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (isCloudAdminReady() || cloudData.studentAchievements.length > 0) {
           setAchievements(cloudData.studentAchievements);
         } else if (achRes.ok) {
-          setAchievements(await achRes.json());
+          setAchievements(await parseJsonSafe(achRes).catch(() => []));
         }
       } else {
-        if (catRes.ok) setCategories(await catRes.json());
-        if (linkRes.ok) setLinks(await linkRes.json());
-        if (annRes.ok) setAnnouncements(await annRes.json());
-        if (regRes.ok) setRegistrations(await regRes.json());
-        if (docRes.ok) setDocuments(await docRes.json());
-        if (settRes.ok) setSiteSettings(await settRes.json());
-        if (qrRes.ok) setQrSettings(await qrRes.json());
-        if (achRes.ok) setAchievements(await achRes.json());
-        if (contactsRes.ok) setCommitteeContacts(await contactsRes.json());
-        if (madrasahAchRes.ok) setMadrasahAchievements(await madrasahAchRes.json());
+        if (catRes.ok) setCategories(await parseJsonSafe(catRes).catch(() => []));
+        if (linkRes.ok) setLinks(await parseJsonSafe(linkRes).catch(() => []));
+        if (annRes.ok) setAnnouncements(await parseJsonSafe(annRes).catch(() => []));
+        if (regRes.ok) setRegistrations(await parseJsonSafe(regRes).catch(() => []));
+        if (docRes.ok) setDocuments(await parseJsonSafe(docRes).catch(() => []));
+        if (settRes.ok) setSiteSettings(await parseJsonSafe(settRes).catch(() => null));
+        if (qrRes.ok) setQrSettings(await parseJsonSafe(qrRes).catch(() => null));
+        if (achRes.ok) setAchievements(await parseJsonSafe(achRes).catch(() => []));
+        if (contactsRes.ok) setCommitteeContacts(await parseJsonSafe(contactsRes).catch(() => []));
+        if (madrasahAchRes.ok) setMadrasahAchievements(await parseJsonSafe(madrasahAchRes).catch(() => []));
       }
     } catch (err: any) {
       console.error('Failed to load admin data:', err);
@@ -288,7 +391,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Refresh admin data AND immediately notify public portal / other open tabs
   const syncAfterChange = async () => {
-    await loadAllData();
+    await Promise.all([loadAllData(), fetchMonitoring(monitoringPeriod)]);
     onDataUpdated?.();
   };
 
@@ -302,6 +405,259 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
     return () => unsubAuth();
   }, []);
+
+  // Poll monitoring every 10s + subscribe Cloud Firestore monitoring collections when connected
+  useEffect(() => {
+    void fetchMonitoring(monitoringPeriod);
+
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchMonitoring(monitoringPeriod);
+      }
+    }, 10000);
+
+    let unsubCloud = () => {};
+    if (isAuthorizedFirebaseAdmin(firebaseUser)) {
+      unsubCloud = subscribeMonitoringFromFirestore((partial) => {
+        setCloudMonitoring((prev) => ({
+          sessions: partial.sessions ?? prev?.sessions ?? [],
+          visits: partial.visits ?? prev?.visits ?? [],
+          events: partial.events ?? prev?.events ?? [],
+          portalUsers: partial.portalUsers ?? prev?.portalUsers ?? [],
+        }));
+        setLastMonitoringSync(new Date().toISOString());
+      });
+    }
+
+    return () => {
+      window.clearInterval(pollId);
+      unsubCloud();
+    };
+  }, [monitoringPeriod, firebaseUser]);
+
+  // Unified real-time MonitoringSummary combining Server API + Cloud Firestore (zero dummy data)
+  const effectiveMonitoring = React.useMemo<MonitoringSummary>(() => {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const startMs =
+      monitoringPeriod === 'today'
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+        : monitoringPeriod === '7d'
+        ? nowMs - 7 * 24 * 60 * 60 * 1000
+        : monitoringPeriod === '30d'
+        ? nowMs - 30 * 24 * 60 * 60 * 1000
+        : 0;
+    const inPeriod = (iso?: string) => {
+      if (monitoringPeriod === 'all') return true;
+      if (!iso) return false;
+      const t = new Date(iso).getTime();
+      return Number.isFinite(t) && t >= startMs;
+    };
+
+    const sessionMap = new Map<string, UserSessionRecord>();
+    for (const s of apiMonitoring?.sessions || []) {
+      sessionMap.set(s.sessionId, { ...s });
+    }
+    for (const s of cloudMonitoring?.sessions || []) {
+      const existing = sessionMap.get(s.sessionId);
+      if (!existing || new Date(s.lastActiveAt).getTime() >= new Date(existing.lastActiveAt).getTime()) {
+        sessionMap.set(s.sessionId, {
+          ...s,
+          actorType:
+            existing?.actorType === 'authenticated' && s.actorType === 'anonymous'
+              ? 'authenticated'
+              : s.actorType,
+          username:
+            existing?.actorType === 'authenticated' && s.actorType === 'anonymous'
+              ? existing.username
+              : s.username,
+          role:
+            existing?.actorType === 'authenticated' && s.actorType === 'anonymous'
+              ? existing.role
+              : s.role,
+          pageViews: Math.max(s.pageViews || 0, existing?.pageViews || 0),
+          actionsCount: Math.max(s.actionsCount || 0, existing?.actionsCount || 0),
+        });
+      }
+    }
+
+    const mergedSessions = Array.from(sessionMap.values())
+      .map((s) => {
+        const lastMs = new Date(s.lastActiveAt).getTime();
+        const isLive = s.status === 'online' && Number.isFinite(lastMs) && nowMs - lastMs <= CLIENT_ONLINE_WINDOW_MS;
+        return {
+          ...s,
+          status: (isLive ? 'online' : 'offline') as 'online' | 'offline',
+        };
+      })
+      .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
+
+    const onlineSessions = mergedSessions.filter((s) => s.status === 'online');
+    const offlineSessions = mergedSessions.filter((s) => s.status === 'offline');
+    const activeActors = new Set(
+      onlineSessions.map((s) => (s.actorType === 'authenticated' && s.userId ? `u:${s.userId}` : `v:${s.visitorId}`))
+    );
+    const loggedInUsers = new Set(
+      onlineSessions.filter((s) => s.actorType === 'authenticated').map((s) => s.userId || s.username)
+    );
+
+    const eventMap = new Map<string, PortalEventRecord>();
+    for (const e of apiMonitoring?.recentEvents || []) {
+      eventMap.set(e.id, e);
+    }
+    for (const e of cloudMonitoring?.events || []) {
+      if (inPeriod(e.timestamp)) {
+        eventMap.set(e.id, e);
+      }
+    }
+    const mergedEvents = Array.from(eventMap.values()).sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+
+    const authEventMap = new Map<string, PortalEventRecord>();
+    for (const e of apiMonitoring?.loginHistory || []) {
+      authEventMap.set(e.id, e);
+    }
+    for (const e of cloudMonitoring?.events || []) {
+      if (e.eventType === 'AUTH_LOGIN' || e.eventType === 'AUTH_LOGIN_FAILED' || e.eventType === 'AUTH_LOGOUT') {
+        authEventMap.set(e.id, e);
+      }
+    }
+    const loginHistory = Array.from(authEventMap.values())
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 50);
+
+    const cloudVisitsInPeriod = (cloudMonitoring?.visits || []).filter((v) => inPeriod(v.timestamp));
+    const totalVisits = Math.max(apiMonitoring?.totalVisits || 0, cloudVisitsInPeriod.length);
+    const uniqueVisitorSet = new Set<string>(cloudVisitsInPeriod.map((v) => v.visitorId).filter(Boolean));
+    const uniqueVisitors = Math.max(apiMonitoring?.uniqueVisitors || 0, uniqueVisitorSet.size);
+
+    const allHistoricalSet = new Set<string>([
+      ...(cloudMonitoring?.visits || []).map((v) => v.visitorId).filter(Boolean),
+      ...mergedSessions.map((s) => s.visitorId).filter(Boolean),
+    ]);
+    const historicalUsersCount = Math.max(apiMonitoring?.historicalUsersCount || 0, allHistoricalSet.size);
+
+    const cloudServiceClickCounts = new Map<string, number>();
+    const cloudCatClickCounts = new Map<string, number>();
+    let totalCloudDownloads = 0;
+    for (const e of mergedEvents) {
+      if (e.eventType === 'SERVICE_CLICK' && e.targetId) {
+        cloudServiceClickCounts.set(e.targetId, (cloudServiceClickCounts.get(e.targetId) || 0) + 1);
+      }
+      if (e.eventType === 'SERVICE_CLICK' && e.categoryId) {
+        cloudCatClickCounts.set(e.categoryId, (cloudCatClickCounts.get(e.categoryId) || 0) + 1);
+      }
+      if (e.eventType === 'DOCUMENT_DOWNLOAD') {
+        totalCloudDownloads += 1;
+      }
+    }
+
+    const linkClickSum = links.reduce((sum, l) => sum + (l.clicksCount || 0), 0);
+    const docDownloadSum = documents.reduce((sum, d) => sum + (d.downloadCount || 0), 0);
+
+    const topServices =
+      links.length > 0
+        ? [...links]
+            .map((l) => ({
+              id: l.id,
+              name: l.name,
+              clicksCount: Math.max(
+                l.clicksCount || 0,
+                monitoringPeriod === 'all' ? cloudServiceClickCounts.get(l.id) || 0 : cloudServiceClickCounts.get(l.id) || l.clicksCount || 0
+              ),
+              targetUrl: l.targetUrl,
+              categoryName: categories.find((c) => c.id === l.categoryId)?.name || 'Umum',
+            }))
+            .sort((a, b) => b.clicksCount - a.clicksCount)
+            .slice(0, 5)
+        : apiMonitoring?.topServices || [];
+
+    const categoryClicks =
+      categories.length > 0
+        ? categories.map((c) => {
+            const apiItem = apiMonitoring?.categoryClicks?.find((ci) => ci.categoryName === c.name);
+            return {
+              categoryName: c.name,
+              count: Math.max(apiItem?.count || 0, cloudCatClickCounts.get(c.id) || 0),
+            };
+          })
+        : apiMonitoring?.categoryClicks || [];
+
+    // Daily visits merging API + Cloud visits
+    const daysCount = monitoringPeriod === 'today' ? 1 : monitoringPeriod === '30d' ? 30 : monitoringPeriod === '7d' ? 7 : 14;
+    const dailyVisits: { date: string; label: string; count: number; uniqueCount: number }[] = [];
+    for (let i = daysCount - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayLabel = d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+      const apiDay = apiMonitoring?.dailyVisits?.find((dv) => dv.date === dateStr);
+      const cloudDayVisits = (cloudMonitoring?.visits || []).filter(
+        (v) => v.dayKey === dateStr || v.timestamp.startsWith(dateStr)
+      );
+      const cloudUniqueDay = new Set(cloudDayVisits.map((v) => v.visitorId).filter(Boolean)).size;
+      dailyVisits.push({
+        date: dateStr,
+        label: apiDay?.label || dayLabel,
+        count: Math.max(apiDay?.count || 0, cloudDayVisits.length),
+        uniqueCount: Math.max(apiDay?.uniqueCount || 0, cloudUniqueDay),
+      });
+    }
+
+    const registeredUsersCount = Math.max(
+      usersList.filter((u) => u.isActive !== false).length,
+      (cloudMonitoring?.portalUsers || []).filter((u) => u.isActive !== false).length,
+      apiMonitoring?.registeredUsersCount || 0
+    );
+
+    return {
+      period: monitoringPeriod,
+      totalVisits,
+      uniqueVisitors,
+      activeUsersNow: Math.max(apiMonitoring?.activeUsersNow || 0, activeActors.size),
+      onlineUsersCount: Math.max(apiMonitoring?.onlineUsersCount || 0, onlineSessions.length),
+      offlineUsersCount: Math.max(apiMonitoring?.offlineUsersCount || 0, offlineSessions.length),
+      loggedInUsersCount: Math.max(apiMonitoring?.loggedInUsersCount || 0, loggedInUsers.size),
+      historicalUsersCount,
+      registeredUsersCount,
+      totalClicks: Math.max(
+        apiMonitoring?.totalClicks || 0,
+        cloudServiceClickCounts.size > 0
+          ? Array.from(cloudServiceClickCounts.values()).reduce((a, b) => a + b, 0)
+          : 0,
+        monitoringPeriod === 'all' ? linkClickSum : 0
+      ),
+      totalDownloads: Math.max(
+        apiMonitoring?.totalDownloads || 0,
+        totalCloudDownloads,
+        monitoringPeriod === 'all' ? docDownloadSum : 0
+      ),
+      sessions: mergedSessions.slice(0, 100),
+      recentEvents: mergedEvents.slice(0, 100),
+      loginHistory,
+      dailyVisits,
+      topServices,
+      categoryClicks,
+      systemStatus: {
+        apiOk: !monitoringError && (apiMonitoring?.systemStatus?.apiOk ?? true),
+        cloudConnected: isAuthorizedFirebaseAdmin(firebaseUser),
+        lastUpdatedAt: lastMonitoringSync || apiMonitoring?.systemStatus?.lastUpdatedAt || new Date().toISOString(),
+        onlineWindowSeconds: apiMonitoring?.systemStatus?.onlineWindowSeconds || 60,
+      },
+    };
+  }, [
+    monitoringPeriod,
+    apiMonitoring,
+    cloudMonitoring,
+    links,
+    categories,
+    documents,
+    usersList,
+    firebaseUser,
+    monitoringError,
+    lastMonitoringSync,
+  ]);
 
   const handleConnectGoogleCloud = async () => {
     setIsCloudSyncing(true);
@@ -373,7 +729,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (activeTab === 'gas_export') {
       fetch('/api/admin/gas-files', { headers: authHeaders, cache: 'no-store' })
-        .then((res) => res.json())
+        .then((res) => parseJsonSafe<{ files?: any[] }>(res))
         .then((data) => {
           if (data.files) {
             setGasFiles(data.files);
@@ -381,23 +737,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               setSelectedGasFile(data.files[0]);
             }
           }
-        });
+        })
+        .catch(() => {});
     }
   }, [activeTab]);
 
-  // Generate QR for QR tab
+  // Generate QR for QR tab with client fallback
   useEffect(() => {
     if (activeTab === 'qrcode' && qrSettings) {
       const url = qrSettings.portalUrl || window.location.origin;
+      const dark = qrSettings.foregroundColor || '#065f46';
+      const light = qrSettings.backgroundColor || '#ffffff';
       fetch(
         `/api/public/qr-image?url=${encodeURIComponent(url)}&dark=${encodeURIComponent(
-          qrSettings.foregroundColor || '#065f46'
-        )}&light=${encodeURIComponent(qrSettings.backgroundColor || '#ffffff')}&size=360`,
+          dark
+        )}&light=${encodeURIComponent(light)}&size=360`,
         { cache: 'no-store' }
       )
-        .then((res) => res.json())
+        .then((res) => parseJsonSafe<{ dataUrl?: string }>(res))
         .then((data) => {
           if (data.dataUrl) setAdminQrDataUrl(data.dataUrl);
+        })
+        .catch(() => {
+          QRCode.toDataURL(url, {
+            width: 360,
+            margin: 2,
+            color: { dark, light },
+            errorCorrectionLevel: qrSettings.errorCorrectionLevel || 'H',
+          })
+            .then((fallbackUrl) => setAdminQrDataUrl(fallbackUrl))
+            .catch(() => {});
         });
     }
   }, [activeTab, qrSettings]);
@@ -419,7 +788,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingCategory),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
       if (!res.ok && !cloudReady) {
@@ -440,13 +809,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       if (cloudReady) {
         await saveCategoryToFirestore(savedCat);
+        void recordAdminCloudAction({
+          session,
+          targetId: savedCat.id,
+          targetName: savedCat.name,
+          details: `${isEdit ? 'Memperbarui' : 'Menambah'} kategori "${savedCat.name}"`,
+        });
       }
 
       showNotification('success', `Kategori berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
       setEditingCategory(null);
       await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menyimpan kategori.');
     }
   };
 
@@ -460,7 +835,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
       if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal menghapus kategori.');
@@ -468,11 +843,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       if (cloudReady) {
         await deleteCategoryFromFirestore(cat.id);
+        void recordAdminCloudAction({
+          session,
+          targetId: cat.id,
+          targetName: cat.name,
+          details: `Menghapus kategori "${cat.name}"`,
+        });
       }
       showNotification('success', `Kategori "${cat.name}" berhasil dihapus.`);
       await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menghapus kategori.');
     }
   };
 
@@ -491,7 +872,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingLink),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
       if (!res.ok && !cloudReady) {
@@ -517,13 +898,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       if (cloudReady) {
         await saveLinkToFirestore(savedLink);
+        void recordAdminCloudAction({
+          session,
+          targetId: savedLink.id,
+          targetName: savedLink.name,
+          details: `${isEdit ? 'Memperbarui' : 'Menambah'} layanan "${savedLink.name}"`,
+        });
       }
 
       showNotification('success', `Layanan berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
       setEditingLink(null);
       await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menyimpan layanan.');
     }
   };
 
@@ -534,26 +921,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'POST',
         headers: authHeaders,
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
-      if (res.ok || cloudReady) {
-        const dup: ServiceLink = data.link || {
-          ...link,
-          id: crypto.randomUUID(),
-          name: `${link.name} (Salinan)`,
-          order: link.order + 1,
-          clicksCount: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        if (cloudReady) {
-          await saveLinkToFirestore(dup);
-        }
-        showNotification('success', `Layanan "${link.name}" berhasil digandakan.`);
-        await syncAfterChange();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal menggandakan layanan.');
+        return;
       }
+      const dup: ServiceLink = data.link || {
+        ...link,
+        id: crypto.randomUUID(),
+        name: `${link.name} (Salinan)`,
+        order: link.order + 1,
+        clicksCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      if (cloudReady) {
+        await saveLinkToFirestore(dup);
+        void recordAdminCloudAction({
+          session,
+          targetId: dup.id,
+          targetName: dup.name,
+          details: `Menggandakan layanan "${link.name}"`,
+        });
+      }
+      showNotification('success', `Layanan "${link.name}" berhasil digandakan.`);
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menggandakan layanan.');
     }
   };
 
@@ -567,16 +962,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
-      if (res.ok || cloudReady) {
-        if (cloudReady) {
-          await deleteLinkFromFirestore(link.id);
-        }
-        showNotification('success', `Layanan "${link.name}" berhasil dihapus.`);
-        await syncAfterChange();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal menghapus layanan.');
+        return;
       }
+      if (cloudReady) {
+        await deleteLinkFromFirestore(link.id);
+        void recordAdminCloudAction({
+          session,
+          targetId: link.id,
+          targetName: link.name,
+          details: `Menghapus layanan "${link.name}"`,
+        });
+      }
+      showNotification('success', `Layanan "${link.name}" berhasil dihapus.`);
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menghapus layanan.');
     }
   };
 
@@ -591,19 +995,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(siteSettings),
       });
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal menyimpan pengaturan.');
+        return;
+      }
       if (cloudReady) {
         await saveSiteSettingsToFirestore(siteSettings);
+        void recordAdminCloudAction({
+          session,
+          targetName: 'Site Settings',
+          details: 'Memperbarui pengaturan identitas dan tampilan portal',
+        });
       }
-      if (res.ok || cloudReady) {
-        showNotification('success', 'Pengaturan identitas dan tampilan portal berhasil disimpan & disinkronkan.');
-        await syncAfterChange();
-      } else {
-        const data = await res.json();
-        showNotification('error', data.error || 'Gagal menyimpan pengaturan.');
-      }
+      showNotification('success', 'Pengaturan identitas dan tampilan portal berhasil disimpan & disinkronkan.');
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menyimpan pengaturan.');
     }
   };
 
@@ -618,25 +1027,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(qrSettings),
       });
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal menyimpan pengaturan QR Code.');
+        return;
+      }
       if (cloudReady) {
         await saveQrSettingsToFirestore(qrSettings);
+        void recordAdminCloudAction({
+          session,
+          targetName: 'QR Settings',
+          details: 'Memperbarui konfigurasi QR Code dan Poster',
+        });
       }
-      if (res.ok || cloudReady) {
-        showNotification('success', 'Pengaturan QR Code dan Poster berhasil diperbarui.');
-        const url = qrSettings.portalUrl || window.location.origin;
+      showNotification('success', 'Pengaturan QR Code dan Poster berhasil diperbarui.');
+      const url = qrSettings.portalUrl || window.location.origin;
+      const dark = qrSettings.foregroundColor || '#065f46';
+      const light = qrSettings.backgroundColor || '#ffffff';
+      try {
         const qrRes = await fetch(
           `/api/public/qr-image?url=${encodeURIComponent(url)}&dark=${encodeURIComponent(
-            qrSettings.foregroundColor || '#065f46'
-          )}&light=${encodeURIComponent(qrSettings.backgroundColor || '#ffffff')}&size=360`,
+            dark
+          )}&light=${encodeURIComponent(light)}&size=360`,
           { cache: 'no-store' }
         );
-        const qrData = await qrRes.json();
+        const qrData = await parseJsonSafe<{ dataUrl?: string }>(qrRes);
         if (qrData.dataUrl) setAdminQrDataUrl(qrData.dataUrl);
-        await syncAfterChange();
+      } catch {
+        const fallbackUrl = await QRCode.toDataURL(url, {
+          width: 360,
+          margin: 2,
+          color: { dark, light },
+          errorCorrectionLevel: qrSettings.errorCorrectionLevel || 'H',
+        }).catch(() => '');
+        if (fallbackUrl) setAdminQrDataUrl(fallbackUrl);
       }
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal memperbarui QR Code.');
     }
   };
 
@@ -648,22 +1077,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify({ status, notes: notes || '' }),
       });
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal memperbarui status prestasi.');
+        return;
+      }
       if (cloudReady) {
         await verifyStudentAchievementInFirestore(id, status, notes || '');
+        void recordAdminCloudAction({
+          session,
+          targetId: id,
+          targetName: 'Prestasi Santri',
+          details: `Mengubah status prestasi santri (${id}) menjadi ${status}`,
+        });
       }
-      if (res.ok || cloudReady) {
-        showNotification(
-          'success',
-          `Status prestasi berhasil diubah menjadi: ${status === 'verified' ? 'Terverifikasi' : 'Ditolak'}`
-        );
-        await syncAfterChange();
-      } else {
-        const data = await res.json();
-        showNotification('error', data.error || 'Gagal memperbarui status prestasi.');
-      }
+      showNotification(
+        'success',
+        `Status prestasi berhasil diubah menjadi: ${status === 'verified' ? 'Terverifikasi' : 'Ditolak'}`
+      );
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal memverifikasi prestasi.');
     }
   };
 
@@ -675,16 +1110,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal menghapus data prestasi.');
+        return;
+      }
       if (cloudReady) {
         await deleteStudentAchievementFromFirestore(id);
+        void recordAdminCloudAction({
+          session,
+          targetId: id,
+          targetName: 'Prestasi Santri',
+          details: `Menghapus arsip prestasi santri (${id})`,
+        });
       }
-      if (res.ok || cloudReady) {
-        showNotification('success', 'Data prestasi berhasil dihapus.');
-        await syncAfterChange();
-      }
+      showNotification('success', 'Data prestasi berhasil dihapus.');
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menghapus data prestasi.');
     }
   };
 
@@ -705,38 +1149,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingMadrasahAchievement),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
-      if (res.ok || cloudReady) {
-        const savedItem: MadrasahAchievement = data.achievement || {
-          id: editingMadrasahAchievement.id || crypto.randomUUID(),
-          title: editingMadrasahAchievement.title.trim(),
-          category: editingMadrasahAchievement.category || 'Prestasi',
-          level: editingMadrasahAchievement.level || 'Tingkat Nasional',
-          recipient: editingMadrasahAchievement.recipient || 'MA PLUS MM',
-          year: editingMadrasahAchievement.year || String(new Date().getFullYear()),
-          photoUrl: editingMadrasahAchievement.photoUrl || '',
-          shortDescription: editingMadrasahAchievement.shortDescription || '',
-          order: Number(editingMadrasahAchievement.order ?? madrasahAchievements.length + 1),
-          isActive: editingMadrasahAchievement.isActive !== false,
-          createdAt: editingMadrasahAchievement.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        if (cloudReady) {
-          await saveMadrasahAchievementToFirestore(savedItem);
-        }
-        showNotification(
-          'success',
-          `Prestasi Madrasah berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
-        );
-        setEditingMadrasahAchievement(null);
-        await syncAfterChange();
-      } else {
+      if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal menyimpan prestasi madrasah.');
+        return;
       }
+
+      const savedItem: MadrasahAchievement = data.achievement || {
+        id: editingMadrasahAchievement.id || crypto.randomUUID(),
+        title: editingMadrasahAchievement.title.trim(),
+        category: editingMadrasahAchievement.category || 'Prestasi',
+        level: editingMadrasahAchievement.level || 'Tingkat Nasional',
+        recipient: editingMadrasahAchievement.recipient || 'MA PLUS MM',
+        year: editingMadrasahAchievement.year || String(new Date().getFullYear()),
+        photoUrl: editingMadrasahAchievement.photoUrl || '',
+        shortDescription: editingMadrasahAchievement.shortDescription || '',
+        order: Number(editingMadrasahAchievement.order ?? madrasahAchievements.length + 1),
+        isActive: editingMadrasahAchievement.isActive !== false,
+        createdAt: editingMadrasahAchievement.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      if (cloudReady) {
+        await saveMadrasahAchievementToFirestore(savedItem);
+        void recordAdminCloudAction({
+          session,
+          targetId: savedItem.id,
+          targetName: savedItem.title,
+          details: `${isEdit ? 'Memperbarui' : 'Menambah'} prestasi madrasah "${savedItem.title}"`,
+        });
+      }
+      showNotification(
+        'success',
+        `Prestasi Madrasah berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
+      );
+      setEditingMadrasahAchievement(null);
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menyimpan prestasi madrasah.');
     }
   };
 
@@ -748,16 +1199,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal menghapus prestasi madrasah.');
+        return;
+      }
       if (cloudReady) {
         await deleteMadrasahAchievementFromFirestore(id);
+        void recordAdminCloudAction({
+          session,
+          targetId: id,
+          targetName: 'Prestasi Madrasah',
+          details: `Menghapus prestasi madrasah (${id})`,
+        });
       }
-      if (res.ok || cloudReady) {
-        showNotification('success', 'Prestasi madrasah berhasil dihapus.');
-        await syncAfterChange();
-      }
+      showNotification('success', 'Prestasi madrasah berhasil dihapus.');
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menghapus prestasi madrasah.');
     }
   };
 
@@ -776,29 +1236,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify(editingContact),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
 
-      if (res.ok || cloudReady) {
-        const savedContact: CommitteeContact = data.contact || {
-          id: editingContact.id || crypto.randomUUID(),
-          name: (editingContact.name || '').trim(),
-          role: editingContact.role.trim(),
-          whatsappNumber: editingContact.whatsappNumber.trim(),
-          notes: editingContact.notes || '',
-          isAvailable: editingContact.isAvailable !== false,
-        };
-        if (cloudReady) {
-          await saveContactToFirestore(savedContact);
-        }
-        showNotification('success', `Kontak panitia berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
-        setEditingContact(null);
-        await syncAfterChange();
-      } else {
+      if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal menyimpan kontak panitia.');
+        return;
       }
+
+      const savedContact: CommitteeContact = data.contact || {
+        id: editingContact.id || crypto.randomUUID(),
+        name: (editingContact.name || '').trim(),
+        role: editingContact.role.trim(),
+        whatsappNumber: editingContact.whatsappNumber.trim(),
+        notes: editingContact.notes || '',
+        isAvailable: editingContact.isAvailable !== false,
+      };
+      if (cloudReady) {
+        await saveContactToFirestore(savedContact);
+        void recordAdminCloudAction({
+          session,
+          targetId: savedContact.id,
+          targetName: savedContact.role,
+          details: `${isEdit ? 'Memperbarui' : 'Menambah'} kontak panitia "${savedContact.role}"`,
+        });
+      }
+      showNotification('success', `Kontak panitia berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
+      setEditingContact(null);
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menyimpan kontak panitia.');
     }
   };
 
@@ -810,16 +1277,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'DELETE',
         headers: authHeaders,
       });
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
+      if (!res.ok && !cloudReady) {
+        showNotification('error', data.error || 'Gagal menghapus kontak panitia.');
+        return;
+      }
       if (cloudReady) {
         await deleteContactFromFirestore(id);
+        void recordAdminCloudAction({
+          session,
+          targetId: id,
+          targetName: 'Kontak Panitia',
+          details: `Menghapus kontak panitia (${id})`,
+        });
       }
-      if (res.ok || cloudReady) {
-        showNotification('success', 'Kontak panitia berhasil dihapus.');
-        await syncAfterChange();
-      }
+      showNotification('success', 'Kontak panitia berhasil dihapus.');
+      await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal menghapus kontak panitia.');
     }
   };
 
@@ -831,12 +1307,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify({ notes: 'Cadangan manual melalui dashboard admin' }),
       });
-      if (res.ok) {
-        showNotification('success', 'Cadangan database DB_PORTAL_DIGITAL berhasil dibuat.');
-        await loadAllData();
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
+      if (!res.ok) {
+        showNotification('error', data.error || 'Gagal membuat cadangan database.');
+        return;
       }
+      if (isCloudAdminReady()) {
+        void recordAdminCloudAction({
+          session,
+          targetName: 'Database Backup',
+          details: 'Membuat cadangan manual DB_PORTAL_DIGITAL',
+        });
+      }
+      showNotification('success', 'Cadangan database DB_PORTAL_DIGITAL berhasil dibuat.');
+      await loadAllData();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal membuat cadangan database.');
     }
   };
 
@@ -859,7 +1345,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       URL.revokeObjectURL(url);
       showNotification('success', 'File JSON database berhasil diunduh.');
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal mengekspor database JSON.');
     }
   };
 
@@ -875,7 +1361,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         method: 'POST',
         headers: authHeaders,
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       const cloudReady = isCloudAdminReady();
       if (!res.ok && !cloudReady) {
         showNotification('error', data.error || 'Gagal mengosongkan konten portal.');
@@ -883,11 +1369,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       if (cloudReady) {
         await clearPortalCollectionsInFirestore();
+        void recordAdminCloudAction({
+          session,
+          targetName: 'Reset Portal',
+          details: 'Mengosongkan seluruh konten portal dan statistik',
+        });
       }
       showNotification('success', 'Seluruh konten portal berhasil dikosongkan.');
       await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal mengosongkan konten portal.');
     }
   };
 
@@ -907,10 +1398,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         headers: authHeaders,
         body: JSON.stringify({ jsonContent: restoreJson }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe<any>(res).catch(() => ({}));
       if (!res.ok) {
         showNotification('error', data.error || 'Gagal memulihkan database.');
         return;
+      }
+      if (isCloudAdminReady()) {
+        void recordAdminCloudAction({
+          session,
+          targetName: 'Restore Database',
+          details: 'Memulihkan database portal dari cadangan JSON',
+        });
       }
 
       showNotification('success', 'Database berhasil dipulihkan.');
@@ -918,7 +1416,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setRestoreJson('');
       await syncAfterChange();
     } catch (err: any) {
-      showNotification('error', err.message);
+      showNotification('error', err?.message || 'Gagal memulihkan database.');
     }
   };
 
@@ -980,7 +1478,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
         </div>
 
-        {/* Navigation Items List */}
+        {/* Navigation Items List (RBAC-filtered) */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-xs">
           {[
             { id: 'overview', label: '1. Dashboard Utama', icon: LayoutDashboard },
@@ -1000,9 +1498,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             { id: 'backup', label: '15. Backup & Restore', icon: Database },
             { id: 'logs', label: '16. Log Aktivitas', icon: History },
             { id: 'gas_export', label: '17. Ekspor Apps Script', icon: Code2 },
-          ].map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
+          ]
+            .filter((item) => allowedTabsForRole.includes(item.id as TabType))
+            .map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
             return (
               <button
                 key={item.id}
@@ -1242,7 +1742,158 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Metric Cards */}
+              {/* System Status & Real-Time Controls */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold ${
+                        effectiveMonitoring.systemStatus.apiOk
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border border-rose-200'
+                      }`}
+                    >
+                      <Server className="w-3.5 h-3.5" />
+                      <span>
+                        {effectiveMonitoring.systemStatus.apiOk
+                          ? `API Aktif (${apiLatencyMs !== null ? `${apiLatencyMs} ms` : 'OK'})`
+                          : 'API Bermasalah'}
+                      </span>
+                    </span>
+
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold ${
+                        effectiveMonitoring.systemStatus.cloudConnected
+                          ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      {effectiveMonitoring.systemStatus.cloudConnected ? (
+                        <Cloud className="w-3.5 h-3.5" />
+                      ) : (
+                        <CloudOff className="w-3.5 h-3.5" />
+                      )}
+                      <span>
+                        {effectiveMonitoring.systemStatus.cloudConnected
+                          ? 'Cloud Real-Time Sync Aktif'
+                          : 'Mode Lokal / Server'}
+                      </span>
+                    </span>
+
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-medium">
+                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                      <span>
+                        Diperbarui:{' '}
+                        {new Date(effectiveMonitoring.systemStatus.lastUpdatedAt).toLocaleTimeString('id-ID')}
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {(
+                      [
+                        { id: 'today', label: 'Hari Ini' },
+                        { id: '7d', label: '7 Hari' },
+                        { id: '30d', label: '30 Hari' },
+                        { id: 'all', label: 'Semua' },
+                      ] as const
+                    ).map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setMonitoringPeriod(p.id)}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                          monitoringPeriod === p.id
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => fetchMonitoring(monitoringPeriod)}
+                      disabled={monitoringLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-60"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${monitoringLoading ? 'animate-spin' : ''}`} />
+                      <span>Segarkan</span>
+                    </button>
+                  </div>
+                </div>
+
+                {monitoringError && (
+                  <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between gap-2">
+                    <span className="font-semibold">Peringatan Monitoring: {monitoringError}</span>
+                    <button
+                      type="button"
+                      onClick={() => fetchMonitoring(monitoringPeriod)}
+                      className="px-2.5 py-1 rounded-lg bg-rose-700 text-white font-bold cursor-pointer"
+                    >
+                      Coba Lagi
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Real-Time User Activity Metric Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Pengguna Online (Live)</span>
+                    <Wifi className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-emerald-700 mt-1">
+                    {effectiveMonitoring.onlineUsersCount}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {effectiveMonitoring.activeUsersNow} pengguna aktif • jendela {effectiveMonitoring.systemStatus.onlineWindowSeconds} dtk
+                  </p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Pengguna Offline / Selesai</span>
+                    <WifiOff className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-slate-800 mt-1">
+                    {effectiveMonitoring.offlineUsersCount}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {effectiveMonitoring.historicalUsersCount} pernah mengakses
+                  </p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Total Kunjungan</span>
+                    <Activity className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-blue-700 mt-1">
+                    {effectiveMonitoring.totalVisits}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {effectiveMonitoring.uniqueVisitors} pengunjung unik (terdeduplikasi)
+                  </p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Sedang Login &amp; Terdaftar</span>
+                    <Shield className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-slate-900 mt-1">
+                    {effectiveMonitoring.loggedInUsersCount}{' '}
+                    <span className="text-sm font-semibold text-slate-400">
+                      / {effectiveMonitoring.registeredUsersCount}
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Sedang login / akun terdaftar</p>
+                </div>
+              </div>
+
+              {/* Portal Content & Engagement Summary */}
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                   <span className="text-xs text-slate-500 font-medium">Layanan Aktif</span>
@@ -1273,19 +1924,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
                   <span className="text-xs text-slate-500 font-medium">Total Klik Layanan</span>
                   <p className="text-2xl font-extrabold text-emerald-600 mt-1">
-                    {Math.max(
-                      dashboardStats?.stats?.totalClicks || 0,
-                      links.reduce((sum, l) => sum + (l.clicksCount || 0), 0)
-                    )}
+                    {effectiveMonitoring.totalClicks}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Aktivitas klik riil</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Periode terpilih</p>
                 </div>
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-                  <span className="text-xs text-slate-500 font-medium">Kunjungan Portal</span>
-                  <p className="text-2xl font-extrabold text-blue-600 mt-1">
-                    {dashboardStats?.stats?.totalVisitors || 0}
+                  <span className="text-xs text-slate-500 font-medium">Unduhan Dokumen</span>
+                  <p className="text-2xl font-extrabold text-indigo-600 mt-1">
+                    {effectiveMonitoring.totalDownloads}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Pengunjung tercatat</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Aktivitas unduh riil</p>
                 </div>
               </div>
 
@@ -1301,7 +1949,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <button
-                    onClick={() => setActiveTab('links')}
+                    onClick={() => setActiveTab(isFullAdmin ? 'links' : 'announcements')}
                     className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
                   >
                     <Grid className="w-4 h-4 text-emerald-700 mb-1.5" />
@@ -1317,7 +1965,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <p className="text-[11px] text-slate-500">{announcements.length} item</p>
                   </button>
                   <button
-                    onClick={() => setActiveTab('achievements')}
+                    onClick={() => setActiveTab(isFullAdmin ? 'achievements' : 'analytics')}
                     className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
                   >
                     <Trophy className="w-4 h-4 text-amber-600 mb-1.5" />
@@ -1325,7 +1973,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <p className="text-[11px] text-slate-500">{madrasahAchievements.length} galeri</p>
                   </button>
                   <button
-                    onClick={() => setActiveTab('contacts')}
+                    onClick={() => setActiveTab(isFullAdmin ? 'contacts' : 'logs')}
                     className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
                   >
                     <Phone className="w-4 h-4 text-emerald-700 mb-1.5" />
@@ -1337,26 +1985,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* Real Visits Chart & Top 5 Services */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Daily Visits Chart (Visual CSS Bars based on real numbers) */}
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
                   <h4 className="font-bold text-sm text-slate-900 mb-1">
-                    Kunjungan Harian (7 Hari Terakhir)
+                    Kunjungan Harian ({monitoringPeriod === 'today' ? 'Hari Ini' : monitoringPeriod === '30d' ? '30 Hari' : monitoringPeriod === 'all' ? '14 Hari Terakhir' : '7 Hari Terakhir'})
                   </h4>
                   <p className="text-xs text-slate-500 mb-6">
-                    Grafik statistik kunjungan berdasarkan data riil dari tabel VISITORS.
+                    Grafik kunjungan dan pengunjung unik riil dari database.
                   </p>
 
-                  <div className="h-44 flex items-end gap-2 pt-6">
-                    {dashboardStats?.dailyVisits?.map((day: any) => {
-                      const maxVal = Math.max(...(dashboardStats?.dailyVisits?.map((d: any) => d.count) || [1]), 1);
-                      const heightPercent = Math.max(8, Math.round((day.count / maxVal) * 100));
+                  <div className="h-44 flex items-end gap-2 pt-6 overflow-x-auto">
+                    {effectiveMonitoring.dailyVisits.map((day) => {
+                      const maxVal = Math.max(...effectiveMonitoring.dailyVisits.map((d) => d.count), 1);
+                      const heightPercent = day.count > 0 ? Math.max(10, Math.round((day.count / maxVal) * 100)) : 4;
                       return (
-                        <div key={day.date} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
-                          <span className="text-[10px] font-bold text-slate-600">{day.count}</span>
+                        <div key={day.date} className="flex-1 min-w-[28px] flex flex-col items-center gap-1.5 h-full justify-end">
+                          <span className="text-[10px] font-bold text-slate-600">
+                            {day.count}
+                            <span className="text-slate-400 font-normal">/{day.uniqueCount}</span>
+                          </span>
                           <div
-                            className="w-full rounded-t-lg bg-emerald-600 hover:bg-emerald-700 transition-all cursor-default"
+                            className={`w-full rounded-t-lg transition-all cursor-default ${
+                              day.count > 0 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-200'
+                            }`}
                             style={{ height: `${heightPercent}%` }}
-                            title={`${day.label}: ${day.count} kunjungan`}
+                            title={`${day.label}: ${day.count} kunjungan (${day.uniqueCount} unik)`}
                           ></div>
                           <span className="text-[10px] text-slate-500 truncate w-full text-center">
                             {day.label.split(',')[0]}
@@ -1373,30 +2025,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     5 Layanan Paling Banyak Dikunjungi
                   </h4>
                   <p className="text-xs text-slate-500 mb-4">
-                    Peringkat layanan terpopuler berdasarkan klik pengunjung.
+                    Peringkat layanan terpopuler berdasarkan klik pengunjung riil.
                   </p>
 
-                  {dashboardStats?.topServices?.length === 0 ? (
+                  {effectiveMonitoring.topServices.length === 0 ? (
                     <div className="py-12 text-center text-xs text-slate-400">
-                      Belum ada klik layanan yang tercatat.
+                      Belum ada layanan atau klik layanan yang tercatat.
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {dashboardStats?.topServices?.map((srv: any, idx: number) => (
+                      {effectiveMonitoring.topServices.map((srv, idx) => (
                         <div
                           key={srv.id}
                           className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100"
                         >
-                          <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center shrink-0">
                               {idx + 1}
                             </span>
-                            <div>
-                              <p className="font-bold text-xs text-slate-900">{srv.name}</p>
-                              <p className="text-[10px] text-slate-500">{srv.categoryName}</p>
+                            <div className="min-w-0">
+                              <p className="font-bold text-xs text-slate-900 truncate">{srv.name}</p>
+                              <p className="text-[10px] text-slate-500 truncate">{srv.categoryName}</p>
                             </div>
                           </div>
-                          <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                          <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
                             {srv.clicksCount} Klik
                           </span>
                         </div>
@@ -1406,22 +2058,167 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Recent Activity Logs */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-                <h4 className="font-bold text-sm text-slate-900 mb-1">Aktivitas Sistem Terbaru</h4>
-                <p className="text-xs text-slate-500 mb-4">Audit log real-time dari tindakan pengguna dan sistem.</p>
-                <div className="divide-y divide-slate-100">
-                  {dashboardStats?.recentActivities?.map((act: any) => (
-                    <div key={act.id} className="py-2.5 flex items-center justify-between text-xs">
-                      <div>
-                        <strong className="text-slate-800 font-semibold">{act.action}</strong>
-                        <p className="text-slate-500 text-[11px]">{act.details}</p>
-                      </div>
-                      <span className="text-[10px] text-slate-400 shrink-0 ml-4">
-                        {new Date(act.timestamp).toLocaleTimeString('id-ID')}
-                      </span>
+              {/* Live & Historical User Sessions Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-900">Sesi Pengguna Real-Time &amp; Riwayat Akses</h4>
+                    <p className="text-xs text-slate-500">
+                      Membedakan pengunjung anonim dan pengguna login beserta waktu akses pertama, aktivitas terakhir, menu aktif, dan durasi sesi.
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    {effectiveMonitoring.onlineUsersCount} Online • {effectiveMonitoring.offlineUsersCount} Offline
+                  </span>
+                </div>
+                {effectiveMonitoring.sessions.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400">
+                    Belum ada sesi pengguna yang tercatat.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-96">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 sticky top-0">
+                        <tr>
+                          <th className="py-2.5 px-4 font-semibold">Pengguna / Identitas Sesi</th>
+                          <th className="py-2.5 px-4 font-semibold">Status</th>
+                          <th className="py-2.5 px-4 font-semibold">Menu / Lokasi</th>
+                          <th className="py-2.5 px-4 font-semibold">Pertama Akses</th>
+                          <th className="py-2.5 px-4 font-semibold">Aktivitas Terakhir</th>
+                          <th className="py-2.5 px-4 font-semibold">Durasi</th>
+                          <th className="py-2.5 px-4 font-semibold">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {effectiveMonitoring.sessions.slice(0, 30).map((s) => (
+                          <tr key={s.sessionId} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-4">
+                              <div className="flex items-center gap-2">
+                                {s.actorType === 'authenticated' ? (
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                ) : (
+                                  <UserX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                )}
+                                <div>
+                                  <p className="font-bold text-slate-900">
+                                    {s.actorType === 'authenticated' ? `@${s.username}` : 'Pengunjung Publik'}
+                                  </p>
+                                  <p className="text-[10px] font-mono text-slate-400">
+                                    {s.role} • {s.visitorId.slice(0, 14)}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-4">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  s.status === 'online'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    s.status === 'online' ? 'bg-emerald-600' : 'bg-slate-400'
+                                  }`}
+                                ></span>
+                                {s.status === 'online' ? 'Online' : 'Offline'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-slate-700">
+                              <p className="font-medium truncate max-w-[180px]">{s.currentMenu}</p>
+                              <p className="text-[10px] font-mono text-slate-400">{s.currentPath}</p>
+                            </td>
+                            <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">
+                              {new Date(s.firstSeenAt).toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">
+                              {new Date(s.lastActiveAt).toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-2.5 px-4 font-mono text-slate-700 whitespace-nowrap">
+                              {formatDurationSeconds(s.durationSeconds)}
+                            </td>
+                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">
+                              {s.pageViews} view / {s.actionsCount} aksi
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Login History & Recent Real-Time Events */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+                  <h4 className="font-bold text-sm text-slate-900 mb-1">Riwayat Login &amp; Logout</h4>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Catatan autentikasi berhasil, logout, maupun percobaan login gagal.
+                  </p>
+                  {effectiveMonitoring.loginHistory.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-slate-400">
+                      Belum ada riwayat login/logout yang tercatat.
                     </div>
-                  ))}
+                  ) : (
+                    <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                      {effectiveMonitoring.loginHistory.slice(0, 20).map((evt) => (
+                        <div key={evt.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  evt.eventType === 'AUTH_LOGIN'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : evt.eventType === 'AUTH_LOGOUT'
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {evt.eventType}
+                              </span>
+                              <strong className="text-slate-900 truncate">{evt.username}</strong>
+                            </div>
+                            <p className="text-slate-500 text-[11px] truncate mt-0.5">{evt.details}</p>
+                          </div>
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            {new Date(evt.timestamp).toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+                  <h4 className="font-bold text-sm text-slate-900 mb-1">Aktivitas Portal &amp; Sistem Terbaru</h4>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Jejak aktivitas riil pengunjung, klik layanan, unduhan dokumen, dan tindakan admin.
+                  </p>
+                  {effectiveMonitoring.recentEvents.length === 0 && !(dashboardStats?.recentActivities?.length) ? (
+                    <div className="py-8 text-center text-xs text-slate-400">
+                      Belum ada aktivitas yang tercatat.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                      {effectiveMonitoring.recentEvents.slice(0, 20).map((evt) => (
+                        <div key={evt.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                                {evt.eventType}
+                              </span>
+                              <span className="font-semibold text-slate-800 truncate">{evt.username}</span>
+                            </div>
+                            <p className="text-slate-500 text-[11px] truncate mt-0.5">{evt.details}</p>
+                          </div>
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            {new Date(evt.timestamp).toLocaleTimeString('id-ID')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2521,54 +3318,135 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 11: ANALYTICS */}
           {activeTab === 'analytics' && (
             <div className="space-y-6">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-                <h3 className="text-base font-bold text-slate-900 mb-1">Statistik & Analitik Riil</h3>
-                <p className="text-xs text-slate-500 mb-6">
-                  Setiap interaksi dicatat langsung tanpa manipulasi atau angka tiruan.
-                </p>
-
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500">Total Kunjungan</span>
-                    <p className="text-xl font-bold text-slate-900">{dashboardStats?.stats?.totalVisitors || 0}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500">Total Klik Tautan</span>
-                    <p className="text-xl font-bold text-emerald-700">
-                      {Math.max(
-                        dashboardStats?.stats?.totalClicks || 0,
-                        links.reduce((sum, l) => sum + (l.clicksCount || 0), 0)
-                      )}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Statistik &amp; Monitoring Aktivitas Riil</h3>
+                    <p className="text-xs text-slate-500">
+                      Seluruh metrik dihitung langsung dari aktivitas sesi, kunjungan terdeduplikasi, dan event database.
                     </p>
                   </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500">Layanan Aktif</span>
-                    <p className="text-xl font-bold text-slate-900">
-                      {Math.max(
-                        dashboardStats?.stats?.totalActiveServices || 0,
-                        links.filter((l) => l.isActive).length
-                      )}
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[11px] text-slate-500">Kategori Aktif</span>
-                    <p className="text-xl font-bold text-slate-900">
-                      {Math.max(
-                        dashboardStats?.stats?.totalCategories || 0,
-                        categories.filter((c) => c.isActive).length
-                      )}
-                    </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {(
+                      [
+                        { id: 'today', label: 'Hari Ini' },
+                        { id: '7d', label: '7 Hari' },
+                        { id: '30d', label: '30 Hari' },
+                        { id: 'all', label: 'Semua' },
+                      ] as const
+                    ).map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setMonitoringPeriod(p.id)}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                          monitoringPeriod === p.id
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => fetchMonitoring(monitoringPeriod)}
+                      disabled={monitoringLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${monitoringLoading ? 'animate-spin' : ''}`} />
+                      <span>Perbarui</span>
+                    </button>
                   </div>
                 </div>
 
-                <h4 className="font-bold text-xs text-slate-800 mb-3">Distribusi Klik per Kategori</h4>
-                <div className="space-y-2">
-                  {dashboardStats?.categoryClicks?.map((item: any) => (
-                    <div key={item.categoryName} className="flex items-center justify-between text-xs p-2 bg-slate-50 rounded-lg">
-                      <span className="font-semibold text-slate-700">{item.categoryName}</span>
-                      <span className="font-bold text-emerald-700">{item.count} Klik</span>
+                {monitoringError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between">
+                    <span>{monitoringError}</span>
+                    <button
+                      type="button"
+                      onClick={() => fetchMonitoring(monitoringPeriod)}
+                      className="px-2.5 py-1 rounded-lg bg-rose-700 text-white font-bold cursor-pointer"
+                    >
+                      Coba Lagi
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[11px] text-slate-500">Total Kunjungan</span>
+                    <p className="text-xl font-bold text-slate-900">{effectiveMonitoring.totalVisits}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[11px] text-slate-500">Pengunjung Unik</span>
+                    <p className="text-xl font-bold text-blue-700">{effectiveMonitoring.uniqueVisitors}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <span className="text-[11px] text-emerald-800">Online Saat Ini</span>
+                    <p className="text-xl font-bold text-emerald-700">{effectiveMonitoring.onlineUsersCount}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[11px] text-slate-500">Pernah Akses</span>
+                    <p className="text-xl font-bold text-slate-900">{effectiveMonitoring.historicalUsersCount}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[11px] text-slate-500">Total Klik Layanan</span>
+                    <p className="text-xl font-bold text-emerald-700">{effectiveMonitoring.totalClicks}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[11px] text-slate-500">Unduhan Dokumen</span>
+                    <p className="text-xl font-bold text-indigo-700">{effectiveMonitoring.totalDownloads}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-800 mb-3">Distribusi Klik per Kategori</h4>
+                    {effectiveMonitoring.categoryClicks.length === 0 ? (
+                      <p className="text-xs text-slate-400">Belum ada data kategori.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {effectiveMonitoring.categoryClicks.map((item) => (
+                          <div key={item.categoryName} className="flex items-center justify-between text-xs p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                            <span className="font-semibold text-slate-700">{item.categoryName}</span>
+                            <span className="font-bold text-emerald-700">{item.count} Klik</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-800 mb-3">Status Infrastruktur Sistem</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-600">API Server &amp; Latensi</span>
+                        <span className="font-bold text-slate-900">
+                          {effectiveMonitoring.systemStatus.apiOk ? 'Terhubung' : 'Gangguan'}{' '}
+                          {apiLatencyMs !== null ? `(${apiLatencyMs} ms)` : ''}
+                        </span>
+                      </div>
+                      <div className="flex justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-600">Cloud Firestore Real-Time</span>
+                        <span className="font-bold text-slate-900">
+                          {effectiveMonitoring.systemStatus.cloudConnected ? 'Aktif & Tersinkron' : 'Belum Dihubungkan'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-600">Jendela Status Online (Heartbeat)</span>
+                        <span className="font-bold text-slate-900">
+                          {effectiveMonitoring.systemStatus.onlineWindowSeconds} detik
+                        </span>
+                      </div>
+                      <div className="flex justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                        <span className="text-slate-600">Pembaruan Terakhir</span>
+                        <span className="font-mono text-slate-900">
+                          {new Date(effectiveMonitoring.systemStatus.lastUpdatedAt).toLocaleString('id-ID')}
+                        </span>
+                      </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2812,17 +3690,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           onClick={async () => {
                             if (window.confirm('Hapus pengumuman ini?')) {
-                              const res = await fetch(`/api/admin/announcements/${ann.id}`, {
-                                method: 'DELETE',
-                                headers: authHeaders,
-                              });
-                              const cloudReady = isCloudAdminReady();
-                              if (cloudReady) {
-                                await deleteAnnouncementFromFirestore(ann.id);
-                              }
-                              if (res.ok || cloudReady) {
+                              try {
+                                const res = await fetch(`/api/admin/announcements/${ann.id}`, {
+                                  method: 'DELETE',
+                                  headers: authHeaders,
+                                });
+                                const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                                const cloudReady = isCloudAdminReady();
+                                if (!res.ok && !cloudReady) {
+                                  showNotification('error', data.error || 'Gagal menghapus pengumuman.');
+                                  return;
+                                }
+                                if (cloudReady) {
+                                  await deleteAnnouncementFromFirestore(ann.id);
+                                  void recordAdminCloudAction({
+                                    session,
+                                    targetId: ann.id,
+                                    targetName: ann.title,
+                                    details: `Menghapus pengumuman "${ann.title}"`,
+                                  });
+                                }
                                 showNotification('success', 'Pengumuman berhasil dihapus.');
                                 await syncAfterChange();
+                              } catch (err: any) {
+                                showNotification('error', err?.message || 'Gagal menghapus pengumuman.');
                               }
                             }
                           }}
@@ -2907,17 +3798,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           onClick={async () => {
                             if (window.confirm('Hapus pendaftaran ini?')) {
-                              const res = await fetch(`/api/admin/registrations/${reg.id}`, {
-                                method: 'DELETE',
-                                headers: authHeaders,
-                              });
-                              const cloudReady = isCloudAdminReady();
-                              if (cloudReady) {
-                                await deleteRegistrationFromFirestore(reg.id);
-                              }
-                              if (res.ok || cloudReady) {
+                              try {
+                                const res = await fetch(`/api/admin/registrations/${reg.id}`, {
+                                  method: 'DELETE',
+                                  headers: authHeaders,
+                                });
+                                const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                                const cloudReady = isCloudAdminReady();
+                                if (!res.ok && !cloudReady) {
+                                  showNotification('error', data.error || 'Gagal menghapus program pendaftaran.');
+                                  return;
+                                }
+                                if (cloudReady) {
+                                  await deleteRegistrationFromFirestore(reg.id);
+                                  void recordAdminCloudAction({
+                                    session,
+                                    targetId: reg.id,
+                                    targetName: reg.title,
+                                    details: `Menghapus program pendaftaran "${reg.title}"`,
+                                  });
+                                }
                                 showNotification('success', 'Program pendaftaran berhasil dihapus.');
                                 await syncAfterChange();
+                              } catch (err: any) {
+                                showNotification('error', err?.message || 'Gagal menghapus program pendaftaran.');
                               }
                             }
                           }}
@@ -2990,17 +3894,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           onClick={async () => {
                             if (window.confirm('Hapus dokumen ini?')) {
-                              const res = await fetch(`/api/admin/documents/${doc.id}`, {
-                                method: 'DELETE',
-                                headers: authHeaders,
-                              });
-                              const cloudReady = isCloudAdminReady();
-                              if (cloudReady) {
-                                await deleteDocumentFromFirestore(doc.id);
-                              }
-                              if (res.ok || cloudReady) {
+                              try {
+                                const res = await fetch(`/api/admin/documents/${doc.id}`, {
+                                  method: 'DELETE',
+                                  headers: authHeaders,
+                                });
+                                const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                                const cloudReady = isCloudAdminReady();
+                                if (!res.ok && !cloudReady) {
+                                  showNotification('error', data.error || 'Gagal menghapus dokumen.');
+                                  return;
+                                }
+                                if (cloudReady) {
+                                  await deleteDocumentFromFirestore(doc.id);
+                                  void recordAdminCloudAction({
+                                    session,
+                                    targetId: doc.id,
+                                    targetName: doc.title,
+                                    details: `Menghapus dokumen "${doc.title}"`,
+                                  });
+                                }
                                 showNotification('success', 'Dokumen berhasil dihapus.');
                                 await syncAfterChange();
+                              } catch (err: any) {
+                                showNotification('error', err?.message || 'Gagal menghapus dokumen.');
                               }
                             }
                           }}
@@ -3043,13 +3960,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {u.id !== session.user.id && (
                       <button
                         onClick={async () => {
-                          const res = await fetch(`/api/admin/users/${u.id}/toggle-status`, {
-                            method: 'PUT',
-                            headers: authHeaders,
-                          });
-                          if (res.ok) {
+                          try {
+                            const res = await fetch(`/api/admin/users/${u.id}/toggle-status`, {
+                              method: 'PUT',
+                              headers: authHeaders,
+                            });
+                            const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                            if (!res.ok) {
+                              showNotification('error', data.error || 'Gagal memperbarui status pengguna.');
+                              return;
+                            }
+                            const updatedUser = data.user || { ...u, isActive: !u.isActive };
+                            if (isCloudAdminReady()) {
+                              void savePortalUserDirectoryInFirestore(updatedUser);
+                              void recordAdminCloudAction({
+                                session,
+                                targetId: u.id,
+                                targetName: u.username,
+                                details: `${updatedUser.isActive ? 'Mengaktifkan' : 'Menonaktifkan'} akun @${u.username}`,
+                              });
+                            }
                             showNotification('success', `Status pengguna @${u.username} diperbarui.`);
-                            await loadAllData();
+                            await syncAfterChange();
+                          } catch (err: any) {
+                            showNotification('error', err?.message || 'Gagal memperbarui status pengguna.');
                           }
                         }}
                         className="px-2.5 py-1 text-[11px] font-semibold border rounded-lg cursor-pointer shrink-0"
@@ -3412,41 +4346,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const isEdit = Boolean(editingAnnouncement.id);
-                const url = isEdit
-                  ? `/api/admin/announcements/${editingAnnouncement.id}`
-                  : '/api/admin/announcements';
-                const res = await fetch(url, {
-                  method: isEdit ? 'PUT' : 'POST',
-                  headers: authHeaders,
-                  body: JSON.stringify(editingAnnouncement),
-                });
-                const data = await res.json().catch(() => ({}));
-                const cloudReady = isCloudAdminReady();
-                if (!res.ok && !cloudReady) {
-                  showNotification('error', data.error || 'Gagal menyimpan pengumuman.');
-                  return;
+                try {
+                  const isEdit = Boolean(editingAnnouncement.id);
+                  const url = isEdit
+                    ? `/api/admin/announcements/${editingAnnouncement.id}`
+                    : '/api/admin/announcements';
+                  const res = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify(editingAnnouncement),
+                  });
+                  const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                  const cloudReady = isCloudAdminReady();
+                  if (!res.ok && !cloudReady) {
+                    showNotification('error', data.error || 'Gagal menyimpan pengumuman.');
+                    return;
+                  }
+                  const savedAnn: Announcement = data.announcement || {
+                    id: editingAnnouncement.id || crypto.randomUUID(),
+                    title: (editingAnnouncement.title || '').trim(),
+                    content: (editingAnnouncement.content || '').trim(),
+                    imageUrl: editingAnnouncement.imageUrl || '',
+                    publishDate: editingAnnouncement.publishDate || new Date().toISOString().split('T')[0],
+                    expiryDate: editingAnnouncement.expiryDate || '',
+                    status: editingAnnouncement.status === 'draft' ? 'draft' : 'published',
+                    createdAt: editingAnnouncement.createdAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  };
+                  if (cloudReady) {
+                    await saveAnnouncementToFirestore(savedAnn);
+                    void recordAdminCloudAction({
+                      session,
+                      targetId: savedAnn.id,
+                      targetName: savedAnn.title,
+                      details: `${isEdit ? 'Memperbarui' : 'Menerbitkan'} pengumuman "${savedAnn.title}"`,
+                    });
+                  }
+                  showNotification(
+                    'success',
+                    `Pengumuman berhasil ${isEdit ? 'diperbarui' : 'diterbitkan'}.`
+                  );
+                  setEditingAnnouncement(null);
+                  await syncAfterChange();
+                } catch (err: any) {
+                  showNotification('error', err?.message || 'Gagal menyimpan pengumuman.');
                 }
-                const savedAnn: Announcement = data.announcement || {
-                  id: editingAnnouncement.id || crypto.randomUUID(),
-                  title: (editingAnnouncement.title || '').trim(),
-                  content: (editingAnnouncement.content || '').trim(),
-                  imageUrl: editingAnnouncement.imageUrl || '',
-                  publishDate: editingAnnouncement.publishDate || new Date().toISOString().split('T')[0],
-                  expiryDate: editingAnnouncement.expiryDate || '',
-                  status: editingAnnouncement.status === 'draft' ? 'draft' : 'published',
-                  createdAt: editingAnnouncement.createdAt || new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                };
-                if (cloudReady) {
-                  await saveAnnouncementToFirestore(savedAnn);
-                }
-                showNotification(
-                  'success',
-                  `Pengumuman berhasil ${isEdit ? 'diperbarui' : 'diterbitkan'}.`
-                );
-                setEditingAnnouncement(null);
-                await syncAfterChange();
               }}
               className="space-y-3.5"
             >
@@ -3595,44 +4539,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const isEdit = Boolean(editingRegistration.id);
-                const url = isEdit
-                  ? `/api/admin/registrations/${editingRegistration.id}`
-                  : '/api/admin/registrations';
-                const res = await fetch(url, {
-                  method: isEdit ? 'PUT' : 'POST',
-                  headers: authHeaders,
-                  body: JSON.stringify(editingRegistration),
-                });
-                const data = await res.json().catch(() => ({}));
-                const cloudReady = isCloudAdminReady();
-                if (!res.ok && !cloudReady) {
-                  showNotification('error', data.error || 'Gagal menyimpan program pendaftaran.');
-                  return;
+                try {
+                  const isEdit = Boolean(editingRegistration.id);
+                  const url = isEdit
+                    ? `/api/admin/registrations/${editingRegistration.id}`
+                    : '/api/admin/registrations';
+                  const res = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify(editingRegistration),
+                  });
+                  const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                  const cloudReady = isCloudAdminReady();
+                  if (!res.ok && !cloudReady) {
+                    showNotification('error', data.error || 'Gagal menyimpan program pendaftaran.');
+                    return;
+                  }
+                  const savedReg: Registration = data.registration || {
+                    id: editingRegistration.id || crypto.randomUUID(),
+                    title: (editingRegistration.title || '').trim(),
+                    description: (editingRegistration.description || '').trim(),
+                    bannerUrl: editingRegistration.bannerUrl || '',
+                    formUrl: (editingRegistration.formUrl || '').trim(),
+                    startDate: editingRegistration.startDate || '',
+                    endDate: editingRegistration.endDate || '',
+                    status: editingRegistration.status === 'closed' ? 'closed' : 'open',
+                    order: Number(editingRegistration.order ?? registrations.length + 1),
+                    isActive: editingRegistration.isActive ?? true,
+                    createdAt: editingRegistration.createdAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  };
+                  if (cloudReady) {
+                    await saveRegistrationToFirestore(savedReg);
+                    void recordAdminCloudAction({
+                      session,
+                      targetId: savedReg.id,
+                      targetName: savedReg.title,
+                      details: `${isEdit ? 'Memperbarui' : 'Menambah'} program pendaftaran "${savedReg.title}"`,
+                    });
+                  }
+                  showNotification(
+                    'success',
+                    `Program pendaftaran berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
+                  );
+                  setEditingRegistration(null);
+                  await syncAfterChange();
+                } catch (err: any) {
+                  showNotification('error', err?.message || 'Gagal menyimpan program pendaftaran.');
                 }
-                const savedReg: Registration = data.registration || {
-                  id: editingRegistration.id || crypto.randomUUID(),
-                  title: (editingRegistration.title || '').trim(),
-                  description: (editingRegistration.description || '').trim(),
-                  bannerUrl: editingRegistration.bannerUrl || '',
-                  formUrl: (editingRegistration.formUrl || '').trim(),
-                  startDate: editingRegistration.startDate || '',
-                  endDate: editingRegistration.endDate || '',
-                  status: editingRegistration.status === 'closed' ? 'closed' : 'open',
-                  order: Number(editingRegistration.order ?? registrations.length + 1),
-                  isActive: editingRegistration.isActive ?? true,
-                  createdAt: editingRegistration.createdAt || new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                };
-                if (cloudReady) {
-                  await saveRegistrationToFirestore(savedReg);
-                }
-                showNotification(
-                  'success',
-                  `Program pendaftaran berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
-                );
-                setEditingRegistration(null);
-                await syncAfterChange();
               }}
               className="space-y-3 mt-4"
             >
@@ -3742,38 +4696,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const isEdit = Boolean(editingDocument.id);
-                const url = isEdit ? `/api/admin/documents/${editingDocument.id}` : '/api/admin/documents';
-                const res = await fetch(url, {
-                  method: isEdit ? 'PUT' : 'POST',
-                  headers: authHeaders,
-                  body: JSON.stringify(editingDocument),
-                });
-                const data = await res.json().catch(() => ({}));
-                const cloudReady = isCloudAdminReady();
-                if (!res.ok && !cloudReady) {
-                  showNotification('error', data.error || 'Gagal menyimpan dokumen.');
-                  return;
+                try {
+                  const isEdit = Boolean(editingDocument.id);
+                  const url = isEdit ? `/api/admin/documents/${editingDocument.id}` : '/api/admin/documents';
+                  const res = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify(editingDocument),
+                  });
+                  const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                  const cloudReady = isCloudAdminReady();
+                  if (!res.ok && !cloudReady) {
+                    showNotification('error', data.error || 'Gagal menyimpan dokumen.');
+                    return;
+                  }
+                  const savedDoc: DocumentItem = data.document || {
+                    id: editingDocument.id || crypto.randomUUID(),
+                    title: (editingDocument.title || '').trim(),
+                    description: (editingDocument.description || '').trim(),
+                    category: (editingDocument.category || 'Umum').trim(),
+                    fileUrl: (editingDocument.fileUrl || '').trim(),
+                    fileType: (editingDocument.fileType || 'PDF').toUpperCase(),
+                    fileSize: editingDocument.fileSize || '0 KB',
+                    downloadCount: Number(editingDocument.downloadCount || 0),
+                    isActive: editingDocument.isActive ?? true,
+                    createdAt: editingDocument.createdAt || new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  };
+                  if (cloudReady) {
+                    await saveDocumentToFirestore(savedDoc);
+                    void recordAdminCloudAction({
+                      session,
+                      targetId: savedDoc.id,
+                      targetName: savedDoc.title,
+                      details: `${isEdit ? 'Memperbarui' : 'Menambah'} dokumen "${savedDoc.title}"`,
+                    });
+                  }
+                  showNotification('success', `Dokumen berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
+                  setEditingDocument(null);
+                  await syncAfterChange();
+                } catch (err: any) {
+                  showNotification('error', err?.message || 'Gagal menyimpan dokumen.');
                 }
-                const savedDoc: DocumentItem = data.document || {
-                  id: editingDocument.id || crypto.randomUUID(),
-                  title: (editingDocument.title || '').trim(),
-                  description: (editingDocument.description || '').trim(),
-                  category: (editingDocument.category || 'Umum').trim(),
-                  fileUrl: (editingDocument.fileUrl || '').trim(),
-                  fileType: (editingDocument.fileType || 'PDF').toUpperCase(),
-                  fileSize: editingDocument.fileSize || '0 KB',
-                  downloadCount: Number(editingDocument.downloadCount || 0),
-                  isActive: editingDocument.isActive ?? true,
-                  createdAt: editingDocument.createdAt || new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                };
-                if (cloudReady) {
-                  await saveDocumentToFirestore(savedDoc);
-                }
-                showNotification('success', `Dokumen berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`);
-                setEditingDocument(null);
-                await syncAfterChange();
               }}
               className="space-y-3 mt-4"
             >
@@ -3873,19 +4837,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                const res = await fetch('/api/admin/users', {
-                  method: 'POST',
-                  headers: authHeaders,
-                  body: JSON.stringify(newUserForm),
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                  showNotification('error', data.error || 'Gagal membuat pengguna');
-                  return;
+                try {
+                  const res = await fetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify(newUserForm),
+                  });
+                  const data = await parseJsonSafe<any>(res).catch(() => ({}));
+                  if (!res.ok) {
+                    showNotification('error', data.error || 'Gagal membuat pengguna.');
+                    return;
+                  }
+                  if (isCloudAdminReady()) {
+                    if (data.user) {
+                      void savePortalUserDirectoryInFirestore(data.user);
+                    }
+                    void recordAdminCloudAction({
+                      session,
+                      targetId: data.user?.id,
+                      targetName: newUserForm.username,
+                      details: `Menambahkan akun ${newUserForm.role} (@${newUserForm.username})`,
+                    });
+                  }
+                  showNotification('success', 'Pengguna berhasil dibuat.');
+                  setNewUserForm({ username: '', fullName: '', email: '', password: '', role: 'operator' });
+                  setShowNewUserModal(false);
+                  await syncAfterChange();
+                } catch (err: any) {
+                  showNotification('error', err?.message || 'Gagal membuat pengguna.');
                 }
-                showNotification('success', 'Pengguna berhasil dibuat');
-                setShowNewUserModal(false);
-                await loadAllData();
               }}
               className="space-y-3 mt-4"
             >

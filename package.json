@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "tsx server.ts",
-    "test": "tsx --test src/lib/crypto.test.ts server/db.test.ts server/auth.test.ts",
+    "test": "tsx --test src/lib/crypto.test.ts server/db.test.ts server/auth.test.ts server/monitoring.test.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

@@ -5,6 +5,7 @@ import {
   getDocFromServer,
   getDocs,
   setDoc,
+  updateDoc,
   deleteDoc,
   onSnapshot,
   query,
@@ -25,6 +26,9 @@ import type {
   CommitteeContact,
   MadrasahAchievement,
   StudentAchievement,
+  UserSessionRecord,
+  PortalEventRecord,
+  PortalEventType,
 } from '../types';
 
 function toIsoString(val: unknown): string {
@@ -147,6 +151,7 @@ async function deleteFirestoreDoc(colName: string, docId: string): Promise<void>
 export interface PublicFirestoreSnapshot {
   initialized: boolean;
   siteSettings: SiteSettings | null;
+  qrSettings?: QrSettings | null;
   categories: Category[];
   links: ServiceLink[];
   announcements: Announcement[];
@@ -227,7 +232,8 @@ export async function fetchPublicPortalFromFirestore(): Promise<PublicFirestoreS
     };
   }
 
-  const [catSnap, linkSnap, annSnap, regSnap, docSnap, contactSnap, madAchSnap] = await Promise.all([
+  const [qrSnap, catSnap, linkSnap, annSnap, regSnap, docSnap, contactSnap, madAchSnap] = await Promise.all([
+    getDoc(doc(db, 'qr_settings', 'default')).catch(() => null),
     getDocs(query(collection(db, 'categories'), where('isActive', '==', true))),
     getDocs(query(collection(db, 'links'), where('isActive', '==', true))),
     getDocs(query(collection(db, 'announcements'), where('status', '==', 'published'))),
@@ -240,6 +246,7 @@ export async function fetchPublicPortalFromFirestore(): Promise<PublicFirestoreS
   return {
     initialized: true,
     siteSettings: mapSiteSettings(settingsSnap.data()),
+    qrSettings: qrSnap && qrSnap.exists() ? mapQrSettings(qrSnap.data()) : null,
     categories: catSnap.docs
       .map((d) => ({ ...(d.data() as any), id: d.id, createdAt: toIsoString(d.data().createdAt), updatedAt: toIsoString(d.data().updatedAt) }) as Category)
       .sort((a, b) => a.order - b.order),
@@ -287,6 +294,17 @@ export function subscribePublicPortalFromFirestore(
         onUpdate({ initialized: true, siteSettings: mapSiteSettings(snap.data()) });
       },
       logError('site_settings/default')
+    )
+  );
+
+  unsubs.push(
+    onSnapshot(
+      doc(db, 'qr_settings', 'default'),
+      (snap) => {
+        if (!snap.exists()) return;
+        onUpdate({ initialized: isInitialized || true, qrSettings: mapQrSettings(snap.data()) });
+      },
+      logError('qr_settings/default')
     )
   );
 
@@ -778,3 +796,418 @@ export async function clearPortalCollectionsInFirestore(): Promise<void> {
     }
   }
 }
+
+// ------------------------------------------------------------
+// REAL-TIME MONITORING & TELEMETRY IN FIRESTORE
+// ------------------------------------------------------------
+
+const FS_SESSION_CREATED_PREFIX = 'PORTAL_FS_SESSION_CREATED_';
+const FS_VISIT_RECORDED_PREFIX = 'PORTAL_FS_VISIT_';
+
+const PUBLIC_ALLOWED_EVENT_TYPES: PortalEventType[] = [
+  'PORTAL_VISIT',
+  'SERVICE_CLICK',
+  'DOCUMENT_DOWNLOAD',
+  'MENU_NAVIGATE',
+  'ACHIEVEMENT_SUBMIT',
+];
+
+export async function upsertPortalSessionInFirestore(params: {
+  sessionId: string;
+  visitorId: string;
+  actorType: 'anonymous' | 'authenticated';
+  userId?: string;
+  username: string;
+  role: string;
+  status: 'online' | 'offline';
+  firstSeenAt: string;
+  endedAt?: string;
+  durationSeconds: number;
+  currentPath: string;
+  currentMenu: string;
+  pageViews: number;
+  actionsCount: number;
+  userAgent?: string;
+}): Promise<void> {
+  const cleanSessionId = sanitizeId(params.sessionId);
+  const cleanVisitorId = sanitizeId(params.visitorId);
+  const ref = doc(db, 'portal_sessions', cleanSessionId);
+  const adminReady = isCloudAdminReady();
+  const isAuth = adminReady && params.actorType === 'authenticated';
+  const storageKey = `${FS_SESSION_CREATED_PREFIX}${cleanSessionId}`;
+
+  const clampDuration = Math.max(0, Math.min(86400, Math.round(params.durationSeconds || 0)));
+  const clampViews = Math.max(0, Math.min(10000, Math.round(params.pageViews || 0)));
+  const clampActions = Math.max(0, Math.min(50000, Math.round(params.actionsCount || 0)));
+
+  const buildCreatePayload = () => {
+    const payload: Record<string, any> = {
+      sessionId: cleanSessionId,
+      visitorId: cleanVisitorId,
+      actorType: isAuth ? 'authenticated' : 'anonymous',
+      username: (isAuth ? params.username : 'Pengunjung Publik').slice(0, 80),
+      role: (isAuth ? params.role : 'visitor').slice(0, 40),
+      status: params.status === 'offline' ? 'offline' : 'online',
+      firstSeenAt: (params.firstSeenAt || new Date().toISOString()).slice(0, 64),
+      lastActiveAt: serverTimestamp(),
+      durationSeconds: clampDuration,
+      currentPath: (params.currentPath || '/').slice(0, 200),
+      currentMenu: (params.currentMenu || 'Portal Publik').slice(0, 120),
+      pageViews: clampViews,
+      actionsCount: clampActions,
+      userAgent: (params.userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : '')).slice(0, 300),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    if (isAuth && params.userId) {
+      payload.userId = String(params.userId).slice(0, 128);
+    }
+    if (params.status === 'offline' && params.endedAt) {
+      payload.endedAt = String(params.endedAt).slice(0, 64);
+    }
+    return payload;
+  };
+
+  const buildUpdatePayload = () => {
+    const payload: Record<string, any> = {
+      status: params.status === 'offline' ? 'offline' : 'online',
+      currentPath: (params.currentPath || '/').slice(0, 200),
+      currentMenu: (params.currentMenu || 'Portal Publik').slice(0, 120),
+      lastActiveAt: serverTimestamp(),
+      durationSeconds: clampDuration,
+      pageViews: clampViews,
+      actionsCount: clampActions,
+      updatedAt: serverTimestamp(),
+    };
+    if (params.status === 'offline' && params.endedAt) {
+      payload.endedAt = String(params.endedAt).slice(0, 64);
+    }
+    if (isAuth) {
+      payload.actorType = 'authenticated';
+      payload.username = params.username.slice(0, 80);
+      payload.role = params.role.slice(0, 40);
+      if (params.userId) payload.userId = String(params.userId).slice(0, 128);
+    }
+    return payload;
+  };
+
+  let alreadyCreated = false;
+  try {
+    alreadyCreated = sessionStorage.getItem(storageKey) === '1';
+  } catch {
+    alreadyCreated = false;
+  }
+
+  // Only admins are allowed to call getDoc on portal_sessions per firestore.rules
+  if (adminReady && !alreadyCreated) {
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        alreadyCreated = true;
+      }
+    } catch {
+      // ignore and fall back to setDoc/updateDoc
+    }
+  }
+
+  try {
+    if (alreadyCreated) {
+      try {
+        await updateDoc(ref, buildUpdatePayload());
+        return;
+      } catch (err: any) {
+        if (err?.code === 'not-found') {
+          await setDoc(ref, buildCreatePayload());
+          try {
+            sessionStorage.setItem(storageKey, '1');
+          } catch {}
+          return;
+        }
+        throw err;
+      }
+    } else {
+      try {
+        await setDoc(ref, buildCreatePayload());
+        try {
+          sessionStorage.setItem(storageKey, '1');
+        } catch {}
+      } catch (err: any) {
+        if (err?.code === 'permission-denied' || err?.code === 'already-exists') {
+          try {
+            sessionStorage.setItem(storageKey, '1');
+          } catch {}
+          await updateDoc(ref, buildUpdatePayload());
+        } else {
+          throw err;
+        }
+      }
+    }
+  } catch {
+    // Telemetry should never disrupt user navigation
+  }
+}
+
+export async function recordPortalVisitInFirestore(params: {
+  visitId: string;
+  sessionId: string;
+  visitorId: string;
+  actorType?: 'anonymous' | 'authenticated';
+  path: string;
+  referrer?: string;
+  dayKey: string;
+}): Promise<void> {
+  const cleanVisitId = sanitizeId(params.visitId);
+  const storageKey = `${FS_VISIT_RECORDED_PREFIX}${cleanVisitId}`;
+  try {
+    if (sessionStorage.getItem(storageKey) === '1') return;
+  } catch {}
+
+  const adminReady = isCloudAdminReady();
+  try {
+    await setDoc(doc(db, 'portal_visits', cleanVisitId), {
+      id: cleanVisitId,
+      sessionId: sanitizeId(params.sessionId),
+      visitorId: sanitizeId(params.visitorId),
+      actorType: adminReady && params.actorType === 'authenticated' ? 'authenticated' : 'anonymous',
+      path: (params.path || '/').slice(0, 200),
+      referrer: (params.referrer || (typeof document !== 'undefined' ? document.referrer : '')).slice(0, 300),
+      userAgent: (typeof navigator !== 'undefined' ? navigator.userAgent : '').slice(0, 300),
+      dayKey: (params.dayKey || new Date().toISOString().split('T')[0]).slice(0, 20),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    try {
+      sessionStorage.setItem(storageKey, '1');
+    } catch {}
+  } catch {
+    // If deterministic visitId already exists (update forbidden by rules), mark recorded locally
+    try {
+      sessionStorage.setItem(storageKey, '1');
+    } catch {}
+  }
+}
+
+export async function recordPortalEventInFirestore(params: {
+  id?: string;
+  sessionId: string;
+  visitorId: string;
+  actorType?: 'anonymous' | 'authenticated';
+  username?: string;
+  role?: string;
+  eventType: PortalEventType;
+  targetId?: string;
+  targetName?: string;
+  categoryId?: string;
+  path?: string;
+  details: string;
+}): Promise<void> {
+  const adminReady = isCloudAdminReady();
+  if (!adminReady && !PUBLIC_ALLOWED_EVENT_TYPES.includes(params.eventType)) {
+    return;
+  }
+
+  const cleanId = sanitizeId(params.id);
+  const isAuth = adminReady && params.actorType === 'authenticated';
+  const payload: Record<string, any> = {
+    id: cleanId,
+    sessionId: sanitizeId(params.sessionId),
+    visitorId: sanitizeId(params.visitorId),
+    actorType: isAuth ? 'authenticated' : 'anonymous',
+    username: (isAuth ? params.username || 'Admin' : 'Pengunjung Publik').slice(0, 80),
+    role: (isAuth ? params.role || 'admin' : 'visitor').slice(0, 40),
+    eventType: params.eventType,
+    path: (params.path || '/').slice(0, 200),
+    details: (params.details || params.eventType).slice(0, 500),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (params.targetId) payload.targetId = sanitizeId(params.targetId);
+  if (params.targetName) payload.targetName = String(params.targetName).slice(0, 200);
+  if (params.categoryId) payload.categoryId = sanitizeId(params.categoryId);
+
+  try {
+    await setDoc(doc(db, 'portal_events', cleanId), payload);
+  } catch {
+    // Non-blocking telemetry
+  }
+}
+
+export async function savePortalUserDirectoryInFirestore(user: {
+  id: string;
+  username: string;
+  fullName: string;
+  email?: string;
+  role: string;
+  isActive: boolean;
+  lastLoginAt?: string | null;
+}): Promise<void> {
+  if (!isCloudAdminReady()) return;
+  const id = sanitizeId(user.id);
+  const role = ['super_admin', 'admin', 'operator'].includes(user.role) ? user.role : 'operator';
+  const payload: Record<string, any> = {
+    id,
+    username: (user.username || 'user').slice(0, 80),
+    fullName: (user.fullName || user.username || 'User').slice(0, 160),
+    role,
+    isActive: user.isActive !== false,
+  };
+  if (user.email) payload.email = String(user.email).slice(0, 200);
+  if (user.lastLoginAt) payload.lastLoginAt = String(user.lastLoginAt).slice(0, 64);
+
+  try {
+    await writeWithTimestamps('portal_users', id, payload);
+  } catch {
+    // Keep UI responsive
+  }
+}
+
+export interface CloudMonitoringSnapshot {
+  sessions: UserSessionRecord[];
+  visits: {
+    id: string;
+    sessionId: string;
+    visitorId: string;
+    actorType: string;
+    path: string;
+    dayKey: string;
+    timestamp: string;
+  }[];
+  events: PortalEventRecord[];
+  portalUsers: {
+    id: string;
+    username: string;
+    fullName: string;
+    email?: string;
+    role: string;
+    isActive: boolean;
+    lastLoginAt?: string;
+  }[];
+}
+
+export function subscribeMonitoringFromFirestore(
+  onUpdate: (partial: Partial<CloudMonitoringSnapshot>) => void
+): () => void {
+  if (!isCloudAdminReady()) {
+    return () => {};
+  }
+
+  const unsubs: (() => void)[] = [];
+  const warn = (col: string) => (err: unknown) => {
+    console.warn(`Firestore monitoring listener (${col}):`, err instanceof Error ? err.message : err);
+  };
+
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'portal_sessions'),
+      (snap) => {
+        const sessions: UserSessionRecord[] = snap.docs
+          .map((d): UserSessionRecord => {
+            const data = d.data() as any;
+            return {
+              sessionId: String(data.sessionId || d.id),
+              visitorId: String(data.visitorId || 'anonymous'),
+              actorType: data.actorType === 'authenticated' ? 'authenticated' : 'anonymous',
+              userId: data.userId,
+              username: String(data.username || 'Pengunjung Publik'),
+              role: String(data.role || 'visitor'),
+              status: data.status === 'offline' ? 'offline' : 'online',
+              firstSeenAt: String(data.firstSeenAt || toIsoString(data.createdAt)),
+              lastActiveAt: toIsoString(data.lastActiveAt || data.updatedAt),
+              endedAt: data.endedAt ? String(data.endedAt) : undefined,
+              durationSeconds: Number(data.durationSeconds || 0),
+              currentPath: String(data.currentPath || '/'),
+              currentMenu: String(data.currentMenu || 'Portal Publik'),
+              pageViews: Number(data.pageViews || 0),
+              actionsCount: Number(data.actionsCount || 0),
+              userAgent: String(data.userAgent || ''),
+            };
+          })
+          .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
+        onUpdate({ sessions });
+      },
+      warn('portal_sessions')
+    )
+  );
+
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'portal_visits'),
+      (snap) => {
+        const visits = snap.docs
+          .map((d) => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              sessionId: String(data.sessionId || ''),
+              visitorId: String(data.visitorId || 'anonymous'),
+              actorType: String(data.actorType || 'anonymous'),
+              path: String(data.path || '/'),
+              dayKey: String(data.dayKey || ''),
+              timestamp: toIsoString(data.createdAt),
+            };
+          })
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        onUpdate({ visits });
+      },
+      warn('portal_visits')
+    )
+  );
+
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'portal_events'),
+      (snap) => {
+        const events: PortalEventRecord[] = snap.docs
+          .map((d): PortalEventRecord => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              sessionId: String(data.sessionId || ''),
+              visitorId: String(data.visitorId || 'anonymous'),
+              actorType: data.actorType === 'authenticated' ? 'authenticated' : 'anonymous',
+              username: String(data.username || 'Pengunjung Publik'),
+              role: String(data.role || 'visitor'),
+              eventType: data.eventType as PortalEventType,
+              targetId: data.targetId,
+              targetName: data.targetName,
+              categoryId: data.categoryId,
+              path: String(data.path || '/'),
+              details: String(data.details || ''),
+              timestamp: toIsoString(data.createdAt),
+            };
+          })
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        onUpdate({ events });
+      },
+      warn('portal_events')
+    )
+  );
+
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'portal_users'),
+      (snap) => {
+        const portalUsers = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            username: String(data.username || ''),
+            fullName: String(data.fullName || ''),
+            email: data.email ? String(data.email) : undefined,
+            role: String(data.role || 'operator'),
+            isActive: data.isActive !== false,
+            lastLoginAt: data.lastLoginAt ? String(data.lastLoginAt) : undefined,
+          };
+        });
+        onUpdate({ portalUsers });
+      },
+      warn('portal_users')
+    )
+  );
+
+  return () => {
+    unsubs.forEach((fn) => fn());
+  };
+}
+

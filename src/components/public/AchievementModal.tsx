@@ -15,6 +15,8 @@ import {
   compressImageFileToDataUrl,
   createStudentAchievementInFirestore,
 } from '../../lib/firestorePortal';
+import { parseJsonSafe } from '../../lib/http';
+import { trackPortalEvent } from '../../lib/telemetry';
 import type { StudentAchievement } from '../../types';
 
 interface AchievementModalProps {
@@ -51,18 +53,30 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [tandaTerimaCode, setTandaTerimaCode] = useState('');
 
-  // Search applicants from server
+  // Search applicants from server (requires >= 2 characters for privacy & accuracy)
   useEffect(() => {
-    if (isOpen) {
-      fetch(`/api/public/achievements/search-applicant?query=${encodeURIComponent(applicantSearch)}`, {
-        cache: 'no-store',
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.results) setApplicantResults(data.results);
-        })
-        .catch(() => {});
+    if (!isOpen) return;
+    const trimmed = applicantSearch.trim();
+    if (trimmed.length < 2) {
+      setApplicantResults([]);
+      return;
     }
+    let cancelled = false;
+    fetch(`/api/public/achievements/search-applicant?query=${encodeURIComponent(trimmed)}`, {
+      cache: 'no-store',
+    })
+      .then((res) => (res.ok ? parseJsonSafe(res) : { results: [] }))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.results)) {
+          setApplicantResults(data.results);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setApplicantResults([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [applicantSearch, isOpen]);
 
   if (!isOpen) return null;
@@ -139,58 +153,70 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
     setErrorMessage('');
     setIsSubmitting(true);
 
-    try {
-      const res = await fetch('/api/public/achievements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentName: selectedApplicant.name,
-          registrationNumberOrNisn: selectedApplicant.nisn,
-          achievementTitle,
-          field,
-          level,
-          rank,
-          organizer,
-          year,
-          certificateUrl: certificateData,
-          certificateFileName: certificateName || 'piagam_prestasi.pdf',
-          notes,
-        }),
-      });
+    const submissionId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `ach_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const nowIso = new Date().toISOString();
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setErrorMessage(data.error || 'Gagal mengirimkan pendaftaran prestasi.');
+    const payloadBody: StudentAchievement = {
+      id: submissionId,
+      studentName: selectedApplicant.name.trim(),
+      registrationNumberOrNisn: selectedApplicant.nisn.trim(),
+      achievementTitle: achievementTitle.trim(),
+      field,
+      level,
+      rank,
+      organizer: organizer.trim(),
+      year: year.trim(),
+      certificateUrl: certificateData,
+      certificateFileName: certificateName || 'piagam_prestasi.pdf',
+      notes: notes.trim(),
+      status: 'pending',
+      submittedAt: nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    try {
+      const [apiOutcome, cloudOutcome] = await Promise.allSettled([
+        fetch('/api/public/achievements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadBody),
+        }).then(async (res) => {
+          const data = await parseJsonSafe(res);
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Gagal menyimpan prestasi ke server.');
+          }
+          return data;
+        }),
+        createStudentAchievementInFirestore(payloadBody),
+      ]);
+
+      const apiSucceeded = apiOutcome.status === 'fulfilled';
+      const cloudSucceeded = cloudOutcome.status === 'fulfilled';
+
+      if (!apiSucceeded && !cloudSucceeded) {
+        const apiErr = apiOutcome.status === 'rejected' ? apiOutcome.reason?.message : '';
+        const cloudErr = cloudOutcome.status === 'rejected' ? cloudOutcome.reason?.message : '';
+        setErrorMessage(apiErr || cloudErr || 'Gagal mengirimkan pendaftaran prestasi.');
         setIsSubmitting(false);
         return;
       }
 
-      // Persist to Cloud Firestore so admin verification works across refreshes & serverless instances
-      try {
-        const nowIso = new Date().toISOString();
-        await createStudentAchievementInFirestore({
-          id: data.achievementId,
-          studentName: selectedApplicant.name,
-          registrationNumberOrNisn: selectedApplicant.nisn,
-          achievementTitle,
-          field,
-          level,
-          rank,
-          organizer,
-          year,
-          certificateUrl: certificateData,
-          certificateFileName: certificateName || 'piagam_prestasi.pdf',
-          notes,
-          status: 'pending',
-          submittedAt: nowIso,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        });
-      } catch (cloudErr) {
-        console.warn('Firestore achievement sync skipped/warning:', cloudErr);
-      }
+      const resolvedId =
+        (apiSucceeded && apiOutcome.value?.achievementId) ? String(apiOutcome.value.achievementId) : submissionId;
 
-      setTandaTerimaCode(data.achievementId.substring(0, 8).toUpperCase());
+      void trackPortalEvent({
+        eventType: 'ACHIEVEMENT_SUBMIT',
+        targetId: resolvedId,
+        targetName: achievementTitle.trim(),
+        path: '/#achievement-portal',
+        details: `Pengajuan prestasi "${achievementTitle.trim()}" (${level})`,
+      });
+
+      setTandaTerimaCode(resolvedId.substring(0, 8).toUpperCase());
       setStep('success');
     } catch (err: any) {
       setErrorMessage(err.message || 'Terjadi kesalahan jaringan.');
@@ -298,19 +324,25 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
               </button>
             </form>
 
-            {applicantResults.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-slate-200">
-                <div className="relative">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Atau pilih dari nama yang sudah pernah terdata..."
-                    value={applicantSearch}
-                    onChange={(e) => setApplicantSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
+            <div className="space-y-2 pt-2 border-t border-slate-200">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari nama pendaftar yang sudah terdata (min. 2 huruf)..."
+                  value={applicantSearch}
+                  onChange={(e) => setApplicantSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
 
+              {applicantSearch.trim().length > 0 && applicantSearch.trim().length < 2 && (
+                <p className="text-[11px] text-slate-400 px-1">
+                  Ketik minimal 2 karakter untuk mencari data pendaftar.
+                </p>
+              )}
+
+              {applicantResults.length > 0 && (
                 <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
                   {applicantResults.map((app) => (
                     <div
@@ -328,8 +360,8 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 

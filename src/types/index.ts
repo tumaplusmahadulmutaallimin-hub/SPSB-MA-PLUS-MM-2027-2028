@@ -229,6 +229,79 @@ export interface MadrasahAchievement {
   updatedAt: string;
 }
 
+export interface UserSessionRecord {
+  sessionId: string;
+  visitorId: string;
+  actorType: 'anonymous' | 'authenticated';
+  userId?: string;
+  username: string;
+  role: string;
+  status: 'online' | 'offline';
+  firstSeenAt: string;
+  lastActiveAt: string;
+  endedAt?: string;
+  durationSeconds: number;
+  currentPath: string;
+  currentMenu: string;
+  pageViews: number;
+  actionsCount: number;
+  userAgent: string;
+  ipAddress?: string;
+}
+
+export type PortalEventType =
+  | 'PORTAL_VISIT'
+  | 'SERVICE_CLICK'
+  | 'DOCUMENT_DOWNLOAD'
+  | 'MENU_NAVIGATE'
+  | 'ACHIEVEMENT_SUBMIT'
+  | 'AUTH_LOGIN'
+  | 'AUTH_LOGIN_FAILED'
+  | 'AUTH_LOGOUT'
+  | 'ADMIN_ACTION';
+
+export interface PortalEventRecord {
+  id: string;
+  sessionId: string;
+  visitorId: string;
+  actorType: 'anonymous' | 'authenticated';
+  username: string;
+  role: string;
+  eventType: PortalEventType;
+  targetId?: string;
+  targetName?: string;
+  categoryId?: string;
+  path: string;
+  details: string;
+  timestamp: string;
+}
+
+export interface MonitoringSummary {
+  period: 'today' | '7d' | '30d' | 'all';
+  totalVisits: number;
+  uniqueVisitors: number;
+  activeUsersNow: number;
+  onlineUsersCount: number;
+  offlineUsersCount: number;
+  loggedInUsersCount: number;
+  historicalUsersCount: number;
+  registeredUsersCount: number;
+  totalClicks: number;
+  totalDownloads: number;
+  sessions: UserSessionRecord[];
+  recentEvents: PortalEventRecord[];
+  loginHistory: PortalEventRecord[];
+  dailyVisits: { date: string; label: string; count: number; uniqueCount: number }[];
+  topServices: { id: string; name: string; clicksCount: number; targetUrl: string; categoryName: string }[];
+  categoryClicks: { categoryName: string; count: number }[];
+  systemStatus: {
+    apiOk: boolean;
+    cloudConnected: boolean;
+    lastUpdatedAt: string;
+    onlineWindowSeconds: number;
+  };
+}
+
 export interface DatabaseSchema {
   USERS: User[];
   ROLES: Role[];
@@ -247,6 +320,8 @@ export interface DatabaseSchema {
   STUDENT_ACHIEVEMENTS?: StudentAchievement[];
   COMMITTEE_CONTACTS?: CommitteeContact[];
   MADRASAH_ACHIEVEMENTS?: MadrasahAchievement[];
+  USER_SESSIONS?: UserSessionRecord[];
+  PORTAL_EVENTS?: PortalEventRecord[];
 }
 
 export interface AuthSession {

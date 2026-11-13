@@ -94,7 +94,16 @@
     "posterFooter": "Buka kamera smartphone Anda dan arahkan ke kode QR di atas.",
     "updatedAt": "2026-11-13T03:00:00.000Z"
   },
-  "VISITORS": [],
+  "VISITORS": [
+    {
+      "id": "b3c19db3-98c6-48ee-9649-977217a6ea85",
+      "timestamp": "2026-11-13T17:48:00.277Z",
+      "visitorId": "hs3cxgav426",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "referrer": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app/",
+      "path": "/"
+    }
+  ],
   "LINK_CLICKS": [],
   "ACTIVITY_LOGS": [],
   "SYSTEM_CONFIG": {
@@ -111,5 +120,7 @@
   "BACKUP_LOGS": [],
   "STUDENT_ACHIEVEMENTS": [],
   "COMMITTEE_CONTACTS": [],
-  "MADRASAH_ACHIEVEMENTS": []
+  "MADRASAH_ACHIEVEMENTS": [],
+  "USER_SESSIONS": [],
+  "PORTAL_EVENTS": []
 }

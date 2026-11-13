@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { AuthSession, AuthStatus } from '../../types';
 import { parseJsonSafe } from '../../lib/http';
+import { getSessionId, getVisitorId } from '../../lib/telemetry';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -90,7 +91,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          sessionId: getSessionId(),
+          visitorId: getVisitorId(),
+          path: '/admin',
+        }),
       });
       const data = await parseJsonSafe(res);
 

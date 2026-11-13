@@ -27,9 +27,12 @@ import {
   Registration,
   DocumentItem,
   SiteSettings,
+  QrSettings,
   CommitteeContact,
   MadrasahAchievement,
 } from '../../types';
+import QRCode from 'qrcode';
+import { getSafeHref } from '../../lib/telemetry';
 import { IconRenderer } from '../common/IconRenderer';
 import { CommitteeModal } from './CommitteeModal';
 import { AchievementModal } from './AchievementModal';
@@ -43,8 +46,12 @@ interface PublicPortalProps {
   documents: DocumentItem[];
   committeeContacts?: CommitteeContact[];
   madrasahAchievements?: MadrasahAchievement[];
+  qrSettings?: Partial<QrSettings> | null;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
+  onTrackNavigation?: (menuName: string, path?: string) => void;
   onOpenAdminLogin: () => void;
-  onLinkClick: (link: ServiceLink) => void;
+  onLinkClick: (link: ServiceLink, skipNavigate?: boolean) => void;
   onDocumentDownload: (doc: DocumentItem) => void;
 }
 
@@ -57,6 +64,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   documents,
   committeeContacts = [],
   madrasahAchievements = [],
+  qrSettings = null,
+  loadError = null,
+  onRetryLoad,
+  onTrackNavigation,
   onOpenAdminLogin,
   onLinkClick,
   onDocumentDownload,
@@ -71,43 +82,67 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [activeAnnouncementModal, setActiveAnnouncementModal] = useState<Announcement | null>(null);
   const [activeMadrasahAchievementModal, setActiveMadrasahAchievementModal] = useState<MadrasahAchievement | null>(null);
 
-  // Generate QR code for the modal
+  const effectivePortalUrl = (qrSettings?.portalUrl || '').trim() || window.location.origin;
+
+  // Generate QR code for the modal (with client-side QRCode fallback)
   const handleOpenQrModal = async () => {
-    try {
-      const portalUrl = window.location.origin;
-      const res = await fetch(
-        `/api/public/qr-image?url=${encodeURIComponent(portalUrl)}&dark=${encodeURIComponent(
-          siteSettings.primaryColor || '#065f46'
-        )}`
-      );
-      const data = await res.json();
-      if (data.dataUrl) {
-        setQrDataUrl(data.dataUrl);
-      }
-    } catch (err) {
-      console.error('Failed to generate QR:', err);
-    }
     setShowQrModal(true);
+    onTrackNavigation?.('Modal QR Code Portal', '/#qr-portal');
+    const darkColor = qrSettings?.foregroundColor || siteSettings.primaryColor || '#065f46';
+    const lightColor = qrSettings?.backgroundColor || '#ffffff';
+    try {
+      const res = await fetch(
+        `/api/public/qr-image?url=${encodeURIComponent(effectivePortalUrl)}&dark=${encodeURIComponent(
+          darkColor
+        )}&light=${encodeURIComponent(lightColor)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.dataUrl) {
+          setQrDataUrl(data.dataUrl);
+          return;
+        }
+      }
+    } catch {
+      // Fall through to local QRCode generator
+    }
+    try {
+      const localUrl = await QRCode.toDataURL(effectivePortalUrl, {
+        width: qrSettings?.size || 320,
+        margin: 2,
+        color: { dark: darkColor, light: lightColor },
+        errorCorrectionLevel: qrSettings?.errorCorrectionLevel || 'H',
+      });
+      setQrDataUrl(localUrl);
+    } catch (err) {
+      console.error('Failed to generate QR locally:', err);
+    }
   };
 
   const handleCopyPortalLink = () => {
-    navigator.clipboard.writeText(window.location.origin);
+    navigator.clipboard.writeText(effectivePortalUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  // Handle service card click (hanya membuka modal/scroll untuk target internal #...)
+  // Handle service card click (catat analitik klik untuk seluruh layanan termasuk target internal #...)
   const handleCardClick = (link: ServiceLink) => {
     const url = (link.targetUrl || '').trim();
     if (url === '#achievement-portal' || url === '#daftarkan-prestasi') {
+      onLinkClick(link, true);
+      onTrackNavigation?.('Formulir Prestasi Santri', '/#achievement-portal');
       setShowAchievementModal(true);
       return;
     }
     if (url === '#committee-contacts' || url === '#hubungi-panitia') {
+      onLinkClick(link, true);
+      onTrackNavigation?.('Direktori Kontak Panitia', '/#committee-contacts');
       setShowCommitteeModal(true);
       return;
     }
     if (url === '#ppdb-registration' || url === '#ppdb-section') {
+      onLinkClick(link, true);
+      onTrackNavigation?.('Bagian PPDB & Pendaftaran', '/#ppdb-section');
       const element = document.getElementById('ppdb-section');
       if (element) {
         element.scrollIntoView({ behavior: 'smooth' });
@@ -177,7 +212,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           {/* Quick Actions & Contact Button */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
-              onClick={() => setShowCommitteeModal(true)}
+              onClick={() => {
+                onTrackNavigation?.('Direktori Kontak Panitia', '/#committee-contacts');
+                setShowCommitteeModal(true);
+              }}
               style={{ backgroundColor: brandPrimary }}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs font-bold rounded-xl hover:opacity-90 text-white shadow-sm transition-all cursor-pointer"
               title="Hubungi Panitia & Kontak Resmi MA Plus MM"
@@ -256,7 +294,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </a>
 
               <button
-                onClick={() => setShowAchievementModal(true)}
+                onClick={() => {
+                  onTrackNavigation?.('Formulir Prestasi Santri', '/#achievement-portal');
+                  setShowAchievementModal(true);
+                }}
                 style={{ color: brandPrimary }}
                 className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-white hover:bg-slate-100 shadow-md transition-all cursor-pointer"
               >
@@ -265,7 +306,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </button>
 
               <button
-                onClick={() => setShowCommitteeModal(true)}
+                onClick={() => {
+                  onTrackNavigation?.('Direktori Kontak Panitia', '/#committee-contacts');
+                  setShowCommitteeModal(true);
+                }}
                 className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-md shadow-xs transition-all cursor-pointer"
               >
                 <Phone className="w-4 h-4 text-amber-300" />
@@ -274,6 +318,25 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             </div>
           </div>
         </section>
+      )}
+
+      {loadError && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 w-full">
+          <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-semibold">{loadError}</span>
+            </div>
+            {onRetryLoad && (
+              <button
+                onClick={onRetryLoad}
+                className="px-3 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold cursor-pointer"
+              >
+                Muat Ulang Data
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ----------------- DUAL SHOWCASE: MENU PENGUMUMAN PENTING & PRESTASI MADRASAH ----------------- */}
@@ -312,7 +375,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     {announcements.map((ann) => (
                       <div
                         key={ann.id}
-                        onClick={() => setActiveAnnouncementModal(ann)}
+                        onClick={() => {
+                          onTrackNavigation?.(`Pengumuman: ${ann.title}`, '/#announcements');
+                          setActiveAnnouncementModal(ann);
+                        }}
                         className="bg-amber-50/30 hover:bg-amber-50/80 rounded-2xl border border-amber-200/70 hover:border-amber-400 p-3.5 transition-all duration-200 flex flex-col sm:flex-row gap-3.5 cursor-pointer group shadow-2xs hover:shadow-sm"
                       >
                         {ann.imageUrl ? (
@@ -384,7 +450,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 <button
-                  onClick={() => setShowAchievementModal(true)}
+                  onClick={() => {
+                    onTrackNavigation?.('Formulir Prestasi Santri', '/#achievement-portal');
+                    setShowAchievementModal(true);
+                  }}
                   style={{ backgroundColor: brandPrimary }}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl hover:opacity-90 text-white font-bold text-xs transition-all shadow-2xs cursor-pointer shrink-0"
                   title="Daftarkan Prestasi Santri"
@@ -403,7 +472,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   {madrasahAchievements.map((ach) => (
                     <div
                       key={ach.id}
-                      onClick={() => setActiveMadrasahAchievementModal(ach)}
+                      onClick={() => {
+                        onTrackNavigation?.(`Galeri Prestasi: ${ach.title}`, '/#madrasah-achievements');
+                        setActiveMadrasahAchievementModal(ach);
+                      }}
                       className="bg-emerald-50/20 hover:bg-emerald-50/70 rounded-2xl border border-emerald-200/70 hover:border-emerald-400 p-3.5 transition-all duration-200 flex flex-col sm:flex-row gap-3.5 cursor-pointer group shadow-2xs hover:shadow-sm"
                     >
                       {/* Photo Prestasi */}
@@ -515,7 +587,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           {siteSettings.categoriesEnabled && categories.length > 0 && (
             <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
               <button
-                onClick={() => setSelectedCategoryId('all')}
+                onClick={() => {
+                  setSelectedCategoryId('all');
+                  onTrackNavigation?.('Kategori: Semua Layanan', '/#services-section');
+                }}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                   selectedCategoryId === 'all'
                     ? 'bg-slate-900 text-white shadow-xs'
@@ -531,7 +606,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => setSelectedCategoryId(cat.id)}
+                    onClick={() => {
+                      setSelectedCategoryId(cat.id);
+                      onTrackNavigation?.(`Kategori: ${cat.name}`, '/#services-section');
+                    }}
                     className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                       isSelected
                         ? 'text-white shadow-xs'
@@ -702,11 +780,15 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </div>
 
                   <a
-                    href={reg.status === 'open' ? reg.formUrl : '#'}
+                    href={reg.status === 'open' ? (getSafeHref(reg.formUrl) || '#') : '#'}
                     target={reg.status === 'open' ? '_blank' : undefined}
-                    rel={reg.status === 'open' ? 'noreferrer' : undefined}
+                    rel={reg.status === 'open' ? 'noopener noreferrer' : undefined}
                     onClick={(e) => {
-                      if (reg.status !== 'open') e.preventDefault();
+                      if (reg.status !== 'open' || !getSafeHref(reg.formUrl)) {
+                        e.preventDefault();
+                      } else {
+                        onTrackNavigation?.(`Formulir PPDB: ${reg.title}`, '/#ppdb-section');
+                      }
                     }}
                     style={reg.status === 'open' ? { backgroundColor: brandPrimary } : undefined}
                     className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
@@ -822,55 +904,55 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             siteSettings.tiktokUrl ||
             siteSettings.websiteUrl ? (
               <div className="flex flex-wrap items-center gap-2.5">
-                {siteSettings.instagramUrl && (
+                {getSafeHref(siteSettings.instagramUrl) && (
                   <a
-                    href={siteSettings.instagramUrl}
+                    href={getSafeHref(siteSettings.instagramUrl)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
                     title="Instagram"
                   >
                     <IconRenderer name="Instagram" className="w-4 h-4" />
                   </a>
                 )}
-                {siteSettings.facebookUrl && (
+                {getSafeHref(siteSettings.facebookUrl) && (
                   <a
-                    href={siteSettings.facebookUrl}
+                    href={getSafeHref(siteSettings.facebookUrl)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
                     title="Facebook"
                   >
                     <IconRenderer name="Share2" className="w-4 h-4" />
                   </a>
                 )}
-                {siteSettings.youtubeUrl && (
+                {getSafeHref(siteSettings.youtubeUrl) && (
                   <a
-                    href={siteSettings.youtubeUrl}
+                    href={getSafeHref(siteSettings.youtubeUrl)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
                     title="YouTube"
                   >
                     <IconRenderer name="Youtube" className="w-4 h-4" />
                   </a>
                 )}
-                {siteSettings.tiktokUrl && (
+                {getSafeHref(siteSettings.tiktokUrl) && (
                   <a
-                    href={siteSettings.tiktokUrl}
+                    href={getSafeHref(siteSettings.tiktokUrl)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
                     title="TikTok"
                   >
                     <IconRenderer name="Video" className="w-4 h-4" />
                   </a>
                 )}
-                {siteSettings.websiteUrl && (
+                {getSafeHref(siteSettings.websiteUrl) && (
                   <a
-                    href={siteSettings.websiteUrl}
+                    href={getSafeHref(siteSettings.websiteUrl)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors"
                     title="Website Resmi"
                   >
@@ -901,21 +983,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           <p className="text-[11px]">{siteSettings.tagline || 'One QR Code – One Portal – All Digital Services'}</p>
         </div>
       </footer>
-
-      {/* ----------------- MODAL: SALURAN WHATSAPP PANITIA ----------------- */}
-      <CommitteeModal
-        isOpen={showCommitteeModal}
-        onClose={() => setShowCommitteeModal(false)}
-        contacts={committeeContacts}
-        institutionName={siteSettings.institutionName || 'MA Plus MM'}
-      />
-
-      {/* ----------------- MODAL: DAFTARKAN PRESTASI SANTRI ----------------- */}
-      <AchievementModal
-        isOpen={showAchievementModal}
-        onClose={() => setShowAchievementModal(false)}
-        institutionName={siteSettings.institutionName || 'MA Plus MM'}
-      />
 
       {/* ----------------- QR MODAL ----------------- */}
       {showQrModal && (

@@ -11,6 +11,7 @@ import {
   Registration,
   DocumentItem,
   SiteSettings,
+  QrSettings,
   AuthSession,
   MadrasahAchievement,
 } from './types';
@@ -22,8 +23,21 @@ import { Lock, X, Sparkles, ArrowRight } from 'lucide-react';
 import { AuthStatus } from './types';
 import {
   fetchPublicPortalFromFirestore,
+  isCloudAdminReady,
+  recordPortalEventInFirestore,
   subscribePublicPortalFromFirestore,
 } from './lib/firestorePortal';
+import {
+  getSafeHref,
+  getSessionId,
+  getVisitorId,
+  sendHeartbeat,
+  sendOfflineBeacon,
+  trackDocumentDownload,
+  trackPortalEvent,
+  trackPortalVisit,
+  trackServiceClick,
+} from './lib/telemetry';
 
 const SESSION_STORAGE_KEY = 'PORTAL_AUTH_SESSION_V1';
 const VIEW_STORAGE_KEY = 'PORTAL_ACTIVE_VIEW_V1';
@@ -76,6 +90,7 @@ export default function App() {
 
   // Public portal data
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
+  const [qrSettings, setQrSettings] = useState<Partial<QrSettings> | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [links, setLinks] = useState<ServiceLink[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -84,6 +99,8 @@ export default function App() {
   const [committeeContacts, setCommitteeContacts] = useState<any[]>([]);
   const [madrasahAchievements, setMadrasahAchievements] = useState<MadrasahAchievement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [publicLoadError, setPublicLoadError] = useState<string | null>(null);
+  const activeMenuRef = React.useRef<string>('Portal Publik');
 
   // Fetch public portal data (preferring Cloud Firestore once initialized, with API fallback)
   const loadPublicData = useCallback(async () => {
@@ -99,6 +116,7 @@ export default function App() {
       if (cloudSnapshot && cloudSnapshot.initialized && cloudSnapshot.siteSettings) {
         cloudInitializedRef.current = true;
         setSiteSettings(cloudSnapshot.siteSettings);
+        if (cloudSnapshot.qrSettings) setQrSettings(cloudSnapshot.qrSettings);
         setCategories(cloudSnapshot.categories);
         setLinks(cloudSnapshot.links);
         setAnnouncements(cloudSnapshot.announcements);
@@ -106,12 +124,14 @@ export default function App() {
         setDocuments(cloudSnapshot.documents);
         setCommitteeContacts(cloudSnapshot.committeeContacts);
         setMadrasahAchievements(cloudSnapshot.madrasahAchievements);
+        setPublicLoadError(null);
         return;
       }
 
       if (apiRes && apiRes.ok && !cloudInitializedRef.current) {
         const data = await apiRes.json();
         setSiteSettings(data.siteSettings);
+        if (data.qrSettings) setQrSettings(data.qrSettings);
         setCategories(data.categories || []);
         setLinks(data.links || []);
         setAnnouncements(data.announcements || []);
@@ -119,9 +139,16 @@ export default function App() {
         setDocuments(data.documents || []);
         setCommitteeContacts(data.committeeContacts || []);
         setMadrasahAchievements(data.madrasahAchievements || []);
+        setPublicLoadError(null);
+        return;
+      }
+
+      if (!cloudSnapshot?.initialized && (!apiRes || !apiRes.ok)) {
+        setPublicLoadError('Sebagian layanan data gagal dimuat dari server dan cloud.');
       }
     } catch (err) {
       console.error('Failed to load public portal data:', err);
+      setPublicLoadError('Gagal memuat data portal. Periksa koneksi internet Anda.');
     } finally {
       setLoading(false);
     }
@@ -220,6 +247,7 @@ export default function App() {
       if (!snap.initialized) return;
       cloudInitializedRef.current = true;
       if (snap.siteSettings) setSiteSettings(snap.siteSettings);
+      if (snap.qrSettings) setQrSettings(snap.qrSettings);
       if (snap.categories) setCategories(snap.categories);
       if (snap.links) setLinks(snap.links);
       if (snap.announcements) setAnnouncements(snap.announcements);
@@ -227,6 +255,7 @@ export default function App() {
       if (snap.documents) setDocuments(snap.documents);
       if (snap.committeeContacts) setCommitteeContacts(snap.committeeContacts);
       if (snap.madrasahAchievements) setMadrasahAchievements(snap.madrasahAchievements);
+      setPublicLoadError(null);
       setLoading(false);
     });
 
@@ -242,15 +271,11 @@ export default function App() {
 
   // Check existing session & setup info on mount
   useEffect(() => {
-    // Record anonymous visitor hit
-    const visitorId = localStorage.getItem('PORTAL_VISITOR_UUID') || Math.random().toString(36).substring(2);
-    localStorage.setItem('PORTAL_VISITOR_UUID', visitorId);
-
-    fetch('/api/public/visit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitorId, path: window.location.pathname }),
-    }).catch(() => {});
+    // Record deduplicated visitor arrival & initialize online session
+    void trackPortalVisit({
+      path: window.location.pathname,
+      session,
+    });
 
     // Check system auth status (whether personal admin has been set up)
     fetch('/api/auth/status', { cache: 'no-store' })
@@ -302,6 +327,71 @@ export default function App() {
     loadPublicData();
   }, [loadPublicData]);
 
+  // Real-time session heartbeat & reliable offline beacon on pagehide/beforeunload
+  useEffect(() => {
+    activeMenuRef.current =
+      currentView === 'admin' ? 'Dashboard Administrator' : 'Portal Publik';
+
+    void sendHeartbeat({
+      currentPath: currentView === 'admin' ? '/admin' : window.location.pathname,
+      currentMenu: activeMenuRef.current,
+      session,
+    });
+
+    const heartbeatTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void sendHeartbeat({
+          currentPath: currentView === 'admin' ? '/admin' : window.location.pathname,
+          currentMenu: activeMenuRef.current,
+          session,
+        });
+      }
+    }, 20000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void sendHeartbeat({
+          currentPath: currentView === 'admin' ? '/admin' : window.location.pathname,
+          currentMenu: activeMenuRef.current,
+          session,
+        });
+      }
+    };
+
+    const onPageExit = () => {
+      sendOfflineBeacon({
+        currentPath: currentView === 'admin' ? '/admin' : window.location.pathname,
+        currentMenu: activeMenuRef.current,
+        session,
+      });
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageExit);
+    window.addEventListener('beforeunload', onPageExit);
+
+    return () => {
+      window.clearInterval(heartbeatTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageExit);
+      window.removeEventListener('beforeunload', onPageExit);
+    };
+  }, [currentView, session]);
+
+  const handleTrackNavigation = useCallback(
+    (menuName: string, path?: string) => {
+      activeMenuRef.current = menuName;
+      void trackPortalEvent({
+        eventType: 'MENU_NAVIGATE',
+        targetName: menuName,
+        path: path || window.location.pathname,
+        details: `Membuka menu ${menuName}`,
+        session,
+      });
+    },
+    [session]
+  );
+
   // Handle successful standard login
   const handleLoginSuccess = (newSession: AuthSession, mustChangePassword: boolean) => {
     setSession(newSession);
@@ -310,7 +400,25 @@ export default function App() {
     if (mustChangePassword) {
       setShowSetupAccountModal(true);
     } else {
+      activeMenuRef.current = 'Dashboard Administrator';
       setCurrentView('admin');
+      void sendHeartbeat({
+        currentPath: '/admin',
+        currentMenu: 'Dashboard Administrator',
+        session: newSession,
+      });
+      if (isCloudAdminReady()) {
+        void recordPortalEventInFirestore({
+          sessionId: getSessionId(),
+          visitorId: getVisitorId(),
+          actorType: 'authenticated',
+          username: newSession.user.username,
+          role: newSession.user.role,
+          eventType: 'AUTH_LOGIN',
+          path: '/admin',
+          details: `Login administrator oleh @${newSession.user.username}`,
+        });
+      }
     }
   };
 
@@ -351,11 +459,30 @@ export default function App() {
 
   // Handle logout
   const handleLogout = async () => {
-    if (session?.token) {
+    const prevSession = session;
+    const sessionId = getSessionId();
+    const visitorId = getVisitorId();
+    if (prevSession?.token) {
       fetch('/api/auth/logout', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session.token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${prevSession.token}`,
+        },
+        body: JSON.stringify({ sessionId, visitorId }),
       }).catch(() => {});
+      if (isCloudAdminReady()) {
+        void recordPortalEventInFirestore({
+          sessionId,
+          visitorId,
+          actorType: 'authenticated',
+          username: prevSession.user.username,
+          role: prevSession.user.role,
+          eventType: 'AUTH_LOGOUT',
+          path: '/admin',
+          details: `Logout administrator oleh @${prevSession.user.username}`,
+        });
+      }
     }
     setSession(null);
     localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -364,42 +491,56 @@ export default function App() {
     } catch {
       // ignore
     }
+    activeMenuRef.current = 'Portal Publik';
     setCurrentView('public');
+    void sendHeartbeat({
+      currentPath: '/',
+      currentMenu: 'Portal Publik',
+      session: null,
+    });
     loadPublicData();
   };
 
   // Handle link click & track real analytics
-  const handleLinkClick = async (link: ServiceLink) => {
-    const visitorId = localStorage.getItem('PORTAL_VISITOR_UUID') || 'anon';
-    try {
-      fetch(`/api/public/click/${link.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visitorId }),
-      }).catch(() => {});
-    } catch {}
+  const handleLinkClick = async (link: ServiceLink, skipNavigate = false) => {
+    void trackServiceClick({
+      linkId: link.id,
+      linkName: link.name,
+      categoryId: link.categoryId,
+      session,
+    });
 
-    // Open target URL
+    if (skipNavigate) return;
+
+    const safeHref = getSafeHref(link.targetUrl);
+    if (!safeHref) return;
+
     if (link.targetOpen === '_self') {
-      if (link.targetUrl.startsWith('#')) {
-        const el = document.getElementById(link.targetUrl.slice(1));
+      if (safeHref.startsWith('#')) {
+        const el = document.getElementById(safeHref.slice(1));
         if (el) {
           el.scrollIntoView({ behavior: 'smooth' });
           return;
         }
+        return;
       }
-      window.location.href = link.targetUrl;
+      window.location.href = safeHref;
     } else {
-      window.open(link.targetUrl, '_blank', 'noopener,noreferrer');
+      window.open(safeHref, '_blank', 'noopener,noreferrer');
     }
   };
 
   // Handle document download & track download count
   const handleDocumentDownload = async (doc: DocumentItem) => {
-    try {
-      fetch(`/api/public/download/${doc.id}`, { method: 'POST' }).catch(() => {});
-    } catch {}
-    window.open(doc.fileUrl, '_blank');
+    void trackDocumentDownload({
+      docId: doc.id,
+      docTitle: doc.title,
+      session,
+    });
+    const safeHref = getSafeHref(doc.fileUrl);
+    if (safeHref) {
+      window.open(safeHref, '_blank', 'noopener,noreferrer');
+    }
   };
 
   if (loading && !siteSettings) {
@@ -514,6 +655,13 @@ export default function App() {
           documents={documents}
           committeeContacts={committeeContacts}
           madrasahAchievements={madrasahAchievements}
+          qrSettings={qrSettings}
+          loadError={publicLoadError}
+          onRetryLoad={() => {
+            setPublicLoadError(null);
+            loadPublicData();
+          }}
+          onTrackNavigation={handleTrackNavigation}
           onOpenAdminLogin={() => {
             if (session && !session.user.mustChangePassword) {
               setCurrentView('admin');

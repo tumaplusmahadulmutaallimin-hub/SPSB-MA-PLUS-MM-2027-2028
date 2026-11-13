@@ -277,6 +277,118 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "PortalSession": {
+      "title": "PortalSession",
+      "description": "Real-time user session presence, online/offline state, and session duration tracking.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "visitorId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "actorType": { "type": "string", "enum": ["anonymous", "authenticated"] },
+        "userId": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "status": { "type": "string", "enum": ["online", "offline"] },
+        "firstSeenAt": { "type": "string", "maxLength": 64 },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "maxLength": 64 },
+        "durationSeconds": { "type": "number" },
+        "currentPath": { "type": "string", "maxLength": 200 },
+        "currentMenu": { "type": "string", "maxLength": 120 },
+        "pageViews": { "type": "number" },
+        "actionsCount": { "type": "number" },
+        "userAgent": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "sessionId",
+        "visitorId",
+        "actorType",
+        "username",
+        "role",
+        "status",
+        "firstSeenAt",
+        "lastActiveAt",
+        "durationSeconds",
+        "currentPath",
+        "currentMenu",
+        "pageViews",
+        "actionsCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PortalVisit": {
+      "title": "PortalVisit",
+      "description": "Deduplicated portal visit log with server-verified timestamp.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "sessionId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "visitorId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "actorType": { "type": "string", "enum": ["anonymous", "authenticated"] },
+        "path": { "type": "string", "maxLength": 200 },
+        "referrer": { "type": "string", "maxLength": 300 },
+        "userAgent": { "type": "string", "maxLength": 300 },
+        "dayKey": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "sessionId", "visitorId", "actorType", "path", "dayKey", "createdAt", "updatedAt"]
+    },
+    "PortalEvent": {
+      "title": "PortalEvent",
+      "description": "Immutable event stream recording service clicks, downloads, navigation, auth, and admin actions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "sessionId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "visitorId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "actorType": { "type": "string", "enum": ["anonymous", "authenticated"] },
+        "username": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "eventType": {
+          "type": "string",
+          "enum": [
+            "PORTAL_VISIT",
+            "SERVICE_CLICK",
+            "DOCUMENT_DOWNLOAD",
+            "MENU_NAVIGATE",
+            "ACHIEVEMENT_SUBMIT",
+            "AUTH_LOGIN",
+            "AUTH_LOGIN_FAILED",
+            "AUTH_LOGOUT",
+            "ADMIN_ACTION"
+          ]
+        },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetName": { "type": "string", "maxLength": 200 },
+        "categoryId": { "type": "string", "maxLength": 128 },
+        "path": { "type": "string", "maxLength": 200 },
+        "details": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "sessionId", "visitorId", "actorType", "username", "role", "eventType", "path", "details", "createdAt", "updatedAt"]
+    },
+    "PortalUserDirectory": {
+      "title": "PortalUserDirectory",
+      "description": "Non-sensitive directory of registered portal users and operators for admin visibility.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "username": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "email": { "type": "string", "maxLength": 200 },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "operator"] },
+        "isActive": { "type": "boolean" },
+        "lastLoginAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "username", "fullName", "role", "isActive", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -323,6 +435,22 @@
     "/student_achievements/{achievementId}": {
       "schema": { "$ref": "#/entities/StudentAchievement" },
       "description": "Student achievement submissions with PII (admin-only read/list/verify)."
+    },
+    "/portal_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/PortalSession" },
+      "description": "Real-time user session heartbeat and online/offline tracking (admin-only read/list/delete)."
+    },
+    "/portal_visits/{visitId}": {
+      "schema": { "$ref": "#/entities/PortalVisit" },
+      "description": "Deduplicated portal visits (admin-only read/list/delete, immutable append)."
+    },
+    "/portal_events/{eventId}": {
+      "schema": { "$ref": "#/entities/PortalEvent" },
+      "description": "Real-time activity events across clicks, downloads, navigation, auth, and admin actions."
+    },
+    "/portal_users/{userId}": {
+      "schema": { "$ref": "#/entities/PortalUserDirectory" },
+      "description": "Non-sensitive user directory for dashboard user count and roster (admin-only)."
     }
   }
 }

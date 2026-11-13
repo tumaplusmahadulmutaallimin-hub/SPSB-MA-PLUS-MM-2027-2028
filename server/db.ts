@@ -18,6 +18,8 @@ import type {
   BackupLog,
   SetupCredentials,
   MadrasahAchievement,
+  UserSessionRecord,
+  PortalEventRecord,
 } from '../src/types/index.js';
 import {
   generateSalt,
@@ -252,6 +254,8 @@ function buildCleanServerlessDatabase(): DatabaseSchema {
     STUDENT_ACHIEVEMENTS: [],
     COMMITTEE_CONTACTS: [],
     MADRASAH_ACHIEVEMENTS: [],
+    USER_SESSIONS: [],
+    PORTAL_EVENTS: [],
   };
 
   createInitialAdmin(cleanDb);
@@ -323,6 +327,8 @@ export function initializeDatabase(): { db: DatabaseSchema; setupCredentials: Se
     STUDENT_ACHIEVEMENTS: [],
     COMMITTEE_CONTACTS: [],
     MADRASAH_ACHIEVEMENTS: [],
+    USER_SESSIONS: [],
+    PORTAL_EVENTS: [],
   };
 
   // Generate initial administrator account automatically
@@ -376,6 +382,8 @@ export function migrateDatabase(db: Partial<DatabaseSchema>): DatabaseSchema {
     STUDENT_ACHIEVEMENTS: Array.isArray(db.STUDENT_ACHIEVEMENTS) ? db.STUDENT_ACHIEVEMENTS : [],
     COMMITTEE_CONTACTS: Array.isArray(db.COMMITTEE_CONTACTS) ? db.COMMITTEE_CONTACTS : [],
     MADRASAH_ACHIEVEMENTS: Array.isArray(db.MADRASAH_ACHIEVEMENTS) ? db.MADRASAH_ACHIEVEMENTS : [],
+    USER_SESSIONS: Array.isArray(db.USER_SESSIONS) ? db.USER_SESSIONS : [],
+    PORTAL_EVENTS: Array.isArray(db.PORTAL_EVENTS) ? db.PORTAL_EVENTS : [],
   };
 
   // If no admin user exists, create the fixed admin account
@@ -572,3 +580,158 @@ export function getLastSetupCredentials(): SetupCredentials | null {
 export function clearLastSetupCredentials(): void {
   lastSetupCredentials = null;
 }
+
+export const ONLINE_WINDOW_MS = 60_000;
+
+export function isValidSafeUrl(url: string, allowRelative = true): boolean {
+  const trimmed = (url || '').trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('javascript:') || lower.startsWith('vbscript:') || lower.startsWith('data:text/html')) {
+    return false;
+  }
+  if (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('mailto:') ||
+    lower.startsWith('tel:')
+  ) {
+    return true;
+  }
+  if (allowRelative && (trimmed.startsWith('/') || trimmed.startsWith('#'))) {
+    return true;
+  }
+  return false;
+}
+
+export function addPortalEvent(
+  db: DatabaseSchema,
+  entry: Omit<PortalEventRecord, 'id' | 'timestamp'>
+): PortalEventRecord {
+  if (!Array.isArray(db.PORTAL_EVENTS)) db.PORTAL_EVENTS = [];
+  const evt: PortalEventRecord = {
+    id: generateUUID(),
+    timestamp: new Date().toISOString(),
+    ...entry,
+  };
+  db.PORTAL_EVENTS.unshift(evt);
+  if (db.PORTAL_EVENTS.length > 5000) {
+    db.PORTAL_EVENTS = db.PORTAL_EVENTS.slice(0, 5000);
+  }
+  return evt;
+}
+
+export function pruneAndUpdateSessionStatuses(
+  db: DatabaseSchema,
+  onlineWindowMs = ONLINE_WINDOW_MS
+): boolean {
+  if (!Array.isArray(db.USER_SESSIONS)) {
+    db.USER_SESSIONS = [];
+    return false;
+  }
+  const nowMs = Date.now();
+  let changed = false;
+
+  for (const sess of db.USER_SESSIONS) {
+    if (sess.status === 'online') {
+      const lastMs = new Date(sess.lastActiveAt).getTime();
+      if (!Number.isFinite(lastMs) || nowMs - lastMs > onlineWindowMs) {
+        sess.status = 'offline';
+        sess.endedAt = Number.isFinite(lastMs) ? sess.lastActiveAt : new Date(nowMs).toISOString();
+        const startMs = new Date(sess.firstSeenAt).getTime();
+        if (Number.isFinite(startMs) && Number.isFinite(lastMs)) {
+          sess.durationSeconds = Math.max(sess.durationSeconds || 0, Math.round((lastMs - startMs) / 1000));
+        }
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+export function upsertUserSession(
+  db: DatabaseSchema,
+  params: {
+    sessionId: string;
+    visitorId: string;
+    actorType: 'anonymous' | 'authenticated';
+    userId?: string;
+    username: string;
+    role: string;
+    status?: 'online' | 'offline';
+    currentPath?: string;
+    currentMenu?: string;
+    userAgent?: string;
+    ipAddress?: string;
+    incrementPageViews?: number;
+    incrementActions?: number;
+  }
+): UserSessionRecord {
+  if (!Array.isArray(db.USER_SESSIONS)) db.USER_SESSIONS = [];
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+  const cleanSessionId = (params.sessionId || generateUUID()).slice(0, 128);
+  const cleanVisitorId = (params.visitorId || 'anonymous').slice(0, 128);
+
+  let existing = db.USER_SESSIONS.find((s) => s.sessionId === cleanSessionId);
+  if (!existing) {
+    existing = {
+      sessionId: cleanSessionId,
+      visitorId: cleanVisitorId,
+      actorType: params.actorType,
+      userId: params.userId,
+      username: params.username.slice(0, 80),
+      role: params.role.slice(0, 40),
+      status: params.status === 'offline' ? 'offline' : 'online',
+      firstSeenAt: nowIso,
+      lastActiveAt: nowIso,
+      endedAt: params.status === 'offline' ? nowIso : undefined,
+      durationSeconds: 0,
+      currentPath: (params.currentPath || '/').slice(0, 200),
+      currentMenu: (params.currentMenu || 'Portal Publik').slice(0, 120),
+      pageViews: Math.max(0, params.incrementPageViews || 0),
+      actionsCount: Math.max(0, params.incrementActions || 0),
+      userAgent: (params.userAgent || '').slice(0, 300),
+      ipAddress: (params.ipAddress || '').slice(0, 64),
+    };
+    db.USER_SESSIONS.unshift(existing);
+  } else {
+    if (params.actorType === 'authenticated') {
+      existing.actorType = 'authenticated';
+      existing.userId = params.userId;
+      existing.username = params.username.slice(0, 80);
+      existing.role = params.role.slice(0, 40);
+    }
+    if (params.currentPath !== undefined) existing.currentPath = params.currentPath.slice(0, 200);
+    if (params.currentMenu !== undefined) existing.currentMenu = params.currentMenu.slice(0, 120);
+    if (params.userAgent) existing.userAgent = params.userAgent.slice(0, 300);
+    if (params.ipAddress) existing.ipAddress = params.ipAddress.slice(0, 64);
+
+    existing.lastActiveAt = nowIso;
+    if (params.status === 'offline') {
+      existing.status = 'offline';
+      existing.endedAt = nowIso;
+    } else {
+      existing.status = 'online';
+      existing.endedAt = undefined;
+    }
+
+    const startMs = new Date(existing.firstSeenAt).getTime();
+    if (Number.isFinite(startMs)) {
+      existing.durationSeconds = Math.max(existing.durationSeconds || 0, Math.round((nowMs - startMs) / 1000));
+    }
+
+    if (params.incrementPageViews) {
+      existing.pageViews = (existing.pageViews || 0) + params.incrementPageViews;
+    }
+    if (params.incrementActions) {
+      existing.actionsCount = (existing.actionsCount || 0) + params.incrementActions;
+    }
+  }
+
+  if (db.USER_SESSIONS.length > 2000) {
+    db.USER_SESSIONS = db.USER_SESSIONS.slice(0, 2000);
+  }
+  return existing;
+}
+

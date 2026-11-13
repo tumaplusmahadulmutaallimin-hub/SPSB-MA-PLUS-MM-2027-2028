@@ -4,6 +4,8 @@ import {
   loadDatabase,
   saveDatabase,
   addActivityLog,
+  addPortalEvent,
+  upsertUserSession,
 } from './db.js';
 import {
   verifyPassword,
@@ -11,6 +13,13 @@ import {
   generateSalt,
   validatePasswordStrength,
 } from '../src/lib/crypto.js';
+
+export interface AuthTrackingMeta {
+  sessionId?: string;
+  visitorId?: string;
+  userAgent?: string;
+  path?: string;
+}
 
 // In-memory sessions cache & revoked token list
 const activeSessions = new Map<string, { user: User; expiresAt: number }>();
@@ -80,9 +89,11 @@ function verifySignedSessionToken(token: string): SignedTokenPayload | null {
 export function login(
   username: string,
   password: string,
-  ip = '127.0.0.1'
+  ip = '127.0.0.1',
+  meta?: AuthTrackingMeta
 ): { success: boolean; session?: AuthSession; error?: string; mustChangePassword?: boolean } {
-  const attemptKey = `${ip}_${username.toLowerCase()}`;
+  const cleanUsername = (username || '').trim();
+  const attemptKey = `${ip}_${cleanUsername.toLowerCase()}`;
   const now = Date.now();
   const attemptRecord = loginAttempts.get(attemptKey);
 
@@ -96,11 +107,29 @@ export function login(
 
   const db = loadDatabase();
   const user = db.USERS.find(
-    (u) => u.username.toLowerCase() === username.toLowerCase().trim() && u.isActive
+    (u) => u.username.toLowerCase() === cleanUsername.toLowerCase() && u.isActive
   );
 
   if (!user) {
     recordFailedAttempt(attemptKey);
+    addActivityLog(db, {
+      userId: 'anonymous',
+      username: cleanUsername || 'unknown',
+      action: 'LOGIN_FAILED',
+      details: `Percobaan login gagal untuk akun tidak ditemukan dari IP ${ip}`,
+      ipAddress: ip,
+    });
+    addPortalEvent(db, {
+      sessionId: meta?.sessionId || 'auth-attempt',
+      visitorId: meta?.visitorId || 'anonymous',
+      actorType: 'anonymous',
+      username: (cleanUsername || 'unknown').slice(0, 80),
+      role: 'visitor',
+      eventType: 'AUTH_LOGIN_FAILED',
+      path: meta?.path || '/admin/login',
+      details: `Login gagal untuk username "${cleanUsername || '-'}" dari IP ${ip}`,
+    });
+    saveDatabase(db);
     return { success: false, error: 'Username atau password tidak sesuai.' };
   }
 
@@ -113,6 +142,16 @@ export function login(
       action: 'LOGIN_FAILED',
       details: `Percobaan login gagal dengan password salah dari IP ${ip}`,
       ipAddress: ip,
+    });
+    addPortalEvent(db, {
+      sessionId: meta?.sessionId || 'auth-attempt',
+      visitorId: meta?.visitorId || 'anonymous',
+      actorType: 'anonymous',
+      username: user.username,
+      role: user.role,
+      eventType: 'AUTH_LOGIN_FAILED',
+      path: meta?.path || '/admin/login',
+      details: `Password salah pada percobaan login akun @${user.username} dari IP ${ip}`,
     });
     saveDatabase(db);
     return { success: false, error: 'Username atau password tidak sesuai.' };
@@ -130,6 +169,34 @@ export function login(
     details: `Login berhasil${user.mustChangePassword ? ' (Wajib ganti password pertama)' : ''}`,
     ipAddress: ip,
   });
+
+  const resolvedSessionId = meta?.sessionId || `auth_${crypto.randomUUID()}`;
+  upsertUserSession(db, {
+    sessionId: resolvedSessionId,
+    visitorId: meta?.visitorId || `user_${user.id}`,
+    actorType: 'authenticated',
+    userId: user.id,
+    username: user.username,
+    role: user.role,
+    status: 'online',
+    currentPath: meta?.path || '/admin',
+    currentMenu: 'Dashboard Administrator',
+    userAgent: meta?.userAgent || '',
+    ipAddress: ip,
+    incrementActions: 1,
+  });
+
+  addPortalEvent(db, {
+    sessionId: resolvedSessionId,
+    visitorId: meta?.visitorId || `user_${user.id}`,
+    actorType: 'authenticated',
+    username: user.username,
+    role: user.role,
+    eventType: 'AUTH_LOGIN',
+    path: meta?.path || '/admin',
+    details: `@${user.username} (${user.role}) berhasil login dari IP ${ip}`,
+  });
+
   saveDatabase(db);
 
   // Generate stateless HMAC-signed session token
@@ -283,14 +350,71 @@ export function verifySession(token: string): { user: User; mustChangePassword: 
   };
 }
 
-export function logout(token: string): boolean {
+export function logout(
+  token: string,
+  meta?: { sessionId?: string; visitorId?: string; ip?: string; userAgent?: string }
+): boolean {
   if (!token) return false;
+  const cached = activeSessions.get(token);
+  const signedPayload = verifySignedSessionToken(token);
   const existed = activeSessions.delete(token);
-  if (verifySignedSessionToken(token)) {
+
+  if (signedPayload || existed) {
     revokedTokens.add(token);
+    const db = loadDatabase();
+    const userId = signedPayload?.userId || cached?.user?.id || 'unknown';
+    const username = signedPayload?.username || cached?.user?.username || 'admin';
+    const role = signedPayload?.role || cached?.user?.role || 'admin';
+    const ip = meta?.ip || '127.0.0.1';
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    // Mark matching session offline (or latest active session of this user)
+    let targetSessionId = meta?.sessionId;
+    if (Array.isArray(db.USER_SESSIONS)) {
+      const targetSess =
+        (targetSessionId && db.USER_SESSIONS.find((s) => s.sessionId === targetSessionId)) ||
+        db.USER_SESSIONS.find(
+          (s) => s.actorType === 'authenticated' && (s.userId === userId || s.username === username) && s.status === 'online'
+        );
+
+      if (targetSess) {
+        targetSessionId = targetSess.sessionId;
+        targetSess.status = 'offline';
+        targetSess.endedAt = nowIso;
+        targetSess.lastActiveAt = nowIso;
+        targetSess.actionsCount = (targetSess.actionsCount || 0) + 1;
+        const startMs = new Date(targetSess.firstSeenAt).getTime();
+        if (Number.isFinite(startMs)) {
+          targetSess.durationSeconds = Math.max(targetSess.durationSeconds || 0, Math.round((nowMs - startMs) / 1000));
+        }
+      }
+    }
+
+    addActivityLog(db, {
+      userId,
+      username,
+      action: 'LOGOUT',
+      details: `@${username} keluar dari Dashboard Administrator`,
+      ipAddress: ip,
+    });
+
+    addPortalEvent(db, {
+      sessionId: targetSessionId || 'auth-logout',
+      visitorId: meta?.visitorId || `user_${userId}`,
+      actorType: 'authenticated',
+      username,
+      role,
+      eventType: 'AUTH_LOGOUT',
+      path: '/admin',
+      details: `@${username} melakukan logout (${ip})`,
+    });
+
+    saveDatabase(db);
     return true;
   }
-  return existed;
+
+  return false;
 }
 
 /**
