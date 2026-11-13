@@ -109,7 +109,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  const isSetupMode = authStatus ? !authStatus.hasCustomAdminCreated : true;
+  const isSetupMode = authStatus ? !authStatus.hasCustomAdminCreated : false;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
@@ -140,7 +140,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </div>
         )}
 
-        {/* ---------------- 1-CLICK FIRST TIME ACCESS SECTION ---------------- */}
         {isSetupMode ? (
           <div className="mb-5 p-4 rounded-2xl bg-linear-to-br from-emerald-50 via-emerald-50/50 to-amber-50/60 border border-emerald-200 shadow-xs text-left">
             <div className="flex items-center gap-2 mb-1.5">
@@ -166,7 +165,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         ) : (
           <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-emerald-800 text-xs font-medium">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Akun pribadi aktif. Masukkan Username dan Password Anda.</span>
+            <span>Masukkan Username dan Password Administrator untuk masuk ke Dashboard.</span>
           </div>
         )}
 

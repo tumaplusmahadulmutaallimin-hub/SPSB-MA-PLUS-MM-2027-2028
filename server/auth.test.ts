@@ -63,42 +63,26 @@ test('auth: password change enforces strength rules and clears mustChangePasswor
   assert.match(mismatchRes.error || '', /tidak cocok/i);
 });
 
-test('auth: 1-click first-time access and personal account setup flow', () => {
+test('auth: fixed admin credentials 131235210019 / Bismillah3x work immediately without setup mode', () => {
   const statusBefore = getAuthStatus();
-  assert.ok(typeof statusBefore.hasCustomAdminCreated === 'boolean');
+  assert.equal(statusBefore.hasCustomAdminCreated, true);
+  assert.equal(statusBefore.isSetupMode, false);
 
-  // Test 1-click first-time access
-  const firstAccess = firstTimeAccess('127.0.0.1');
-  if (statusBefore.hasCustomAdminCreated) {
-    assert.equal(firstAccess.success, false);
-  } else {
-    assert.equal(firstAccess.success, true);
-    assert.ok(firstAccess.session?.token);
+  // 1-click access must remain blocked when fixed admin is active
+  const blockedAccess = firstTimeAccess('127.0.0.1');
+  assert.equal(blockedAccess.success, false);
 
-    // Setup personal account
-    const setupRes = setupPersonalAccount({
-      userId: firstAccess.session?.user.id,
-      newUsername: 'admin_test_unit',
-      fullName: 'Admin Penguji Unit',
-      email: 'test@maplusmm.sch.id',
-      newPassword: 'PasswordAman2026!',
-      confirmPassword: 'PasswordAman2026!',
-      ip: '127.0.0.1',
-    });
-    assert.equal(setupRes.success, true);
-    assert.equal(setupRes.session?.user.username, 'admin_test_unit');
-    assert.equal(setupRes.session?.user.mustChangePassword, false);
+  // Login with fixed credentials succeeds directly
+  const okLogin = login('131235210019', 'Bismillah3x', '127.0.0.1');
+  assert.equal(okLogin.success, true);
+  assert.equal(okLogin.mustChangePassword, false);
+  assert.equal(okLogin.session?.user.username, '131235210019');
+  assert.ok(okLogin.session?.token);
 
-    // After setup, firstTimeAccess MUST be rejected
-    const blockedAccess = firstTimeAccess('127.0.0.1');
-    assert.equal(blockedAccess.success, false);
-    assert.match(blockedAccess.error || '', /ditutup/i);
-
-    // Login with new credentials succeeds
-    const newLogin = login('admin_test_unit', 'PasswordAman2026!', '127.0.0.1');
-    assert.equal(newLogin.success, true);
-    assert.equal(newLogin.mustChangePassword, false);
-  }
+  // Session token verifies properly
+  const verified = verifySession(okLogin.session!.token);
+  assert.ok(verified);
+  assert.equal(verified.user.username, '131235210019');
 });
 
 test('auth: session verification and logout functionality', () => {

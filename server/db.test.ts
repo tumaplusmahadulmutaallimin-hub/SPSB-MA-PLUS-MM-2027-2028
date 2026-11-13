@@ -57,11 +57,12 @@ test('database: initializes 14 tables and adheres to no dummy data rule', () => 
   assert.equal(health.sheetsCount, 14);
 });
 
-test('database: creates initial admin with mandatory password change and prevents duplicates', () => {
+test('database: creates fixed initial admin and prevents duplicate super_admin accounts', () => {
   const db = loadDatabase();
   const admin = db.USERS.find((u) => u.role === 'super_admin');
   assert.ok(admin, 'Admin must exist');
-  assert.equal(admin.mustChangePassword, true, 'Admin must have mustChangePassword = true');
+  assert.equal(admin.username, '131235210019');
+  assert.equal(admin.mustChangePassword, false, 'Fixed admin must be ready immediately without password change lock');
   assert.equal(admin.isActive, true);
 
   // Calling initializeDatabase again must NOT create duplicate admins

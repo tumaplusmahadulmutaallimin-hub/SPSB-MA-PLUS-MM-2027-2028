@@ -629,7 +629,7 @@ export function migrateDatabase(db: Partial<DatabaseSchema>): DatabaseSchema {
       lastBackupAt: db.SYSTEM_CONFIG?.lastBackupAt || null,
       maxLoginAttempts: db.SYSTEM_CONFIG?.maxLoginAttempts || 5,
       sessionTimeoutHours: db.SYSTEM_CONFIG?.sessionTimeoutHours || 8,
-      hasCustomAdminCreated: Boolean(db.SYSTEM_CONFIG?.hasCustomAdminCreated),
+      hasCustomAdminCreated: db.SYSTEM_CONFIG?.hasCustomAdminCreated ?? true,
     },
     BACKUP_LOGS: Array.isArray(db.BACKUP_LOGS) ? db.BACKUP_LOGS : [],
     STUDENT_ACHIEVEMENTS: Array.isArray(db.STUDENT_ACHIEVEMENTS) ? db.STUDENT_ACHIEVEMENTS : [],
@@ -637,44 +637,55 @@ export function migrateDatabase(db: Partial<DatabaseSchema>): DatabaseSchema {
     MADRASAH_ACHIEVEMENTS: Array.isArray(db.MADRASAH_ACHIEVEMENTS) && db.MADRASAH_ACHIEVEMENTS.length > 0 ? db.MADRASAH_ACHIEVEMENTS : DEFAULT_MADRASAH_ACHIEVEMENTS,
   };
 
-  // If no admin user exists, create one
-  const hasAdmin = safeDb.USERS.some((u) => u.role === 'super_admin' && u.isActive);
-  if (!hasAdmin) {
+  // If no admin user exists, create the fixed admin account
+  const existingAdmin = safeDb.USERS.find((u) => u.role === 'super_admin' && u.isActive);
+  if (!existingAdmin) {
     createInitialAdmin(safeDb);
+  } else if (existingAdmin.username === 'admin_portal' && existingAdmin.mustChangePassword) {
+    // Upgrade legacy placeholder admin to fixed credentials
+    const salt = generateSalt();
+    existingAdmin.username = '131235210019';
+    existingAdmin.fullName = 'Administrator MA Plus MM';
+    existingAdmin.email = 'tumaplusmahadulmutaallimin@gmail.com';
+    existingAdmin.salt = salt;
+    existingAdmin.passwordHash = hashPasswordSync('Bismillah3x', salt);
+    existingAdmin.mustChangePassword = false;
+    existingAdmin.updatedAt = now;
+    safeDb.SYSTEM_CONFIG.hasCustomAdminCreated = true;
   }
 
   return safeDb;
 }
 
 /**
- * Automatically creates the first initial administrator account
+ * Automatically creates the fixed administrator account (131235210019 / Bismillah3x)
  */
 export function createInitialAdmin(db: DatabaseSchema): SetupCredentials {
   const existingAdmin = db.USERS.find((u) => u.role === 'super_admin' && u.isActive);
   if (existingAdmin) {
     return {
       username: existingAdmin.username,
-      temporaryPassword: '*** (Akun administrator sudah dibuat)',
+      temporaryPassword: '*** (Akun administrator sudah aktif)',
       role: existingAdmin.role,
       note: 'Akun administrator telah aktif di sistem.',
     };
   }
 
-  const username = 'admin_portal';
-  const temporaryPassword = generateTemporaryPassword(14);
+  const username = '131235210019';
+  const fixedPassword = 'Bismillah3x';
   const salt = generateSalt();
-  const passwordHash = hashPasswordSync(temporaryPassword, salt);
+  const passwordHash = hashPasswordSync(fixedPassword, salt);
   const now = new Date().toISOString();
 
   const newAdmin: User = {
     id: generateUUID(),
     username,
-    email: 'admin@portal.local',
-    fullName: 'Administrator Utama',
+    email: 'tumaplusmahadulmutaallimin@gmail.com',
+    fullName: 'Administrator MA Plus MM',
     passwordHash,
     salt,
     role: 'super_admin',
-    mustChangePassword: true, // MANDATORY: Must change password on first login
+    mustChangePassword: false,
     isActive: true,
     lastLoginAt: null,
     createdAt: now,
@@ -682,12 +693,15 @@ export function createInitialAdmin(db: DatabaseSchema): SetupCredentials {
   };
 
   db.USERS.push(newAdmin);
+  if (db.SYSTEM_CONFIG) {
+    db.SYSTEM_CONFIG.hasCustomAdminCreated = true;
+  }
 
   return {
     username,
-    temporaryPassword,
+    temporaryPassword: '***',
     role: 'super_admin',
-    note: 'Simpan kredensial sementara ini. Anda diwajibkan mengubah password pada login pertama kali.',
+    note: 'Gunakan akun administrator tetap untuk masuk ke dashboard.',
   };
 }
 
