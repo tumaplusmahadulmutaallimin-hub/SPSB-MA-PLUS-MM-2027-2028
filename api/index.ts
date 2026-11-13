@@ -1,9 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { apiRouter } from './routes.js';
-import { loadDatabase, getDbFile } from './db.js';
+import { apiRouter } from '../server/routes.js';
+import { loadDatabase, getDbFile } from '../server/db.js';
 
-// Vercel serverless entry point (compiled to api/index.mjs via esbuild during build).
-// Do NOT import server.ts here because server.ts calls app.listen().
+// Vercel Serverless Function Entry Point (/api/index.ts).
+// Do NOT import ../server.ts here because server.ts calls app.listen().
 const app = express();
 
 // Safe JSON body parser for Vercel: prevents hanging or "stream is not readable"
@@ -16,7 +16,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
       try {
         req.body = JSON.parse(req.body);
       } catch {
-        // leave as string
+        // keep string as-is
       }
     }
     anyReq._body = true;
@@ -55,7 +55,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
     const db = loadDatabase();
     res.json({
       ok: true,
-      runtime: 'vercel-serverless',
+      runtime: 'vercel-serverless-ts',
       dbFile: getDbFile(),
       usersCount: db.USERS.length,
       linksCount: db.LINKS.length,
