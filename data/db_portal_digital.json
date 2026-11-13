@@ -2,17 +2,17 @@
   "USERS": [
     {
       "id": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
-      "username": "admin_portal",
-      "email": "admin@portal.local",
-      "fullName": "Administrator Utama",
-      "passwordHash": "df5b45591f962b1d91eb7e0c68d3202ab10ef966497d541737fbe81d6e6bb6b1c88c67e5fee3f751e46f0fd2c91daad51adf5c9b04d2e70658e85895e0bb254f",
-      "salt": "0dff5db2e9b01d3a8c9ddd3cc6304735",
+      "username": "admin_test_unit",
+      "email": "test@maplusmm.sch.id",
+      "fullName": "Admin Penguji Unit",
+      "passwordHash": "020b0109189c737768c7202bd832f8db67147dcf08d3365dac7a417ac3d82f1e59f498eca314d82e782200801a1a555a3d19d587d04cb63b7bd7b1d01e389c78",
+      "salt": "9e10704eb10aea5e3f24de4d6171330a",
       "role": "super_admin",
       "mustChangePassword": false,
       "isActive": true,
-      "lastLoginAt": "2026-11-11T09:55:42.239Z",
+      "lastLoginAt": "2026-11-12T13:40:52.930Z",
       "createdAt": "2026-11-11T09:55:25.400Z",
-      "updatedAt": "2026-11-11T09:55:56.879Z"
+      "updatedAt": "2026-11-12T13:40:52.878Z"
     }
   ],
   "ROLES": [
@@ -329,6 +329,30 @@
       "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.8059.12 Safari/537.36",
       "referrer": "http://localhost:3000/",
       "path": "/"
+    },
+    {
+      "id": "c27d17fb-a4c6-4b83-b76e-563e975df3f5",
+      "timestamp": "2026-11-12T13:30:26.480Z",
+      "visitorId": "hs3cxgav426",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "referrer": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app/",
+      "path": "/"
+    },
+    {
+      "id": "f25e3ab3-cdc6-4d46-ac89-198714be96b2",
+      "timestamp": "2026-11-12T13:39:46.682Z",
+      "visitorId": "hs3cxgav426",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "referrer": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app/",
+      "path": "/"
+    },
+    {
+      "id": "ed6886af-57a4-490d-bf3e-d7f6651763d2",
+      "timestamp": "2026-11-12T13:40:42.401Z",
+      "visitorId": "hs3cxgav426",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "referrer": "https://ais-dev-jt62kfclsxtk3jywylemyc-716737754835.asia-southeast1.run.app/",
+      "path": "/"
     }
   ],
   "LINK_CLICKS": [
@@ -350,6 +374,78 @@
     }
   ],
   "ACTIVITY_LOGS": [
+    {
+      "id": "56e2beba-4024-4a9a-8b9c-f5b38265a9be",
+      "timestamp": "2026-11-12T13:40:52.930Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_test_unit",
+      "action": "LOGIN_SUCCESS",
+      "details": "Login berhasil",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "7dcd1b72-6782-46b1-a4df-710b69fa00bc",
+      "timestamp": "2026-11-12T13:40:52.878Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_test_unit",
+      "action": "ADMIN_ACCOUNT_SETUP_COMPLETED",
+      "details": "Akun administrator pribadi (admin_test_unit - Admin Penguji Unit) berhasil dibuat. Akses pertama kali 1-klik kini ditutup permanen.",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "2f2c479a-51cb-48d8-a495-c67f807001bd",
+      "timestamp": "2026-11-12T13:40:52.831Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_maplusmm",
+      "action": "FIRST_TIME_ACCESS_INITIATED",
+      "details": "Akses 1-klik pertama kali dibuka dari IP 127.0.0.1. Administrator diarahkan ke pembuatan akun pribadi.",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "f23f06a0-8867-4ad1-95ec-928fb31569f5",
+      "timestamp": "2026-11-12T13:40:52.825Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_maplusmm",
+      "action": "LOGIN_FAILED",
+      "details": "Percobaan login gagal dengan password salah dari IP 127.0.0.1",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "58cc4532-0844-4723-9790-2b17ab2e3f3f",
+      "timestamp": "2026-11-12T13:40:12.028Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_maplusmm",
+      "action": "LOGIN_SUCCESS",
+      "details": "Login berhasil",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "d01799ad-4eed-4fa6-bc1a-dd1205b1bb45",
+      "timestamp": "2026-11-12T13:39:56.684Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_maplusmm",
+      "action": "ADMIN_ACCOUNT_SETUP_COMPLETED",
+      "details": "Akun administrator pribadi (admin_maplusmm - Administrator MA PLUS MM) berhasil dibuat. Akses pertama kali 1-klik kini ditutup permanen.",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "cff0a568-c864-4f73-8af8-4bd567dc3c9f",
+      "timestamp": "2026-11-12T13:39:50.791Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "FIRST_TIME_ACCESS_INITIATED",
+      "details": "Akses 1-klik pertama kali dibuka dari IP 127.0.0.1. Administrator diarahkan ke pembuatan akun pribadi.",
+      "ipAddress": "127.0.0.1"
+    },
+    {
+      "id": "0e3e32b3-2a19-4320-bc7e-8c0288345752",
+      "timestamp": "2026-11-12T13:39:07.503Z",
+      "userId": "382a4e5e-b02b-44c0-ada5-9887c8abd8fc",
+      "username": "admin_portal",
+      "action": "LOGIN_FAILED",
+      "details": "Percobaan login gagal dengan password salah dari IP 127.0.0.1",
+      "ipAddress": "127.0.0.1"
+    },
     {
       "id": "52b05dbe-3fcf-4b32-8507-32c02f39ee71",
       "timestamp": "2026-11-11T10:31:51.152Z",
@@ -422,7 +518,8 @@
     "installedAt": "2026-11-11T09:55:25.363Z",
     "lastBackupAt": null,
     "maxLoginAttempts": 5,
-    "sessionTimeoutHours": 8
+    "sessionTimeoutHours": 8,
+    "hasCustomAdminCreated": true
   },
   "BACKUP_LOGS": [],
   "STUDENT_ACHIEVEMENTS": [],

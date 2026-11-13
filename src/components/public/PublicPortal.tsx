@@ -18,6 +18,7 @@ import {
   Award,
   Phone,
   Image as ImageIcon,
+  Trophy,
 } from 'lucide-react';
 import {
   Category,
@@ -27,6 +28,7 @@ import {
   DocumentItem,
   SiteSettings,
   CommitteeContact,
+  MadrasahAchievement,
 } from '../../types';
 import { IconRenderer } from '../common/IconRenderer';
 import { CommitteeModal } from './CommitteeModal';
@@ -40,6 +42,7 @@ interface PublicPortalProps {
   registrations: Registration[];
   documents: DocumentItem[];
   committeeContacts?: CommitteeContact[];
+  madrasahAchievements?: MadrasahAchievement[];
   onOpenAdminLogin: () => void;
   onLinkClick: (link: ServiceLink) => void;
   onDocumentDownload: (doc: DocumentItem) => void;
@@ -53,6 +56,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   registrations,
   documents,
   committeeContacts = [],
+  madrasahAchievements = [],
   onOpenAdminLogin,
   onLinkClick,
   onDocumentDownload,
@@ -65,6 +69,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeAnnouncementModal, setActiveAnnouncementModal] = useState<Announcement | null>(null);
+  const [activeMadrasahAchievementModal, setActiveMadrasahAchievementModal] = useState<MadrasahAchievement | null>(null);
 
   // Generate QR code for the modal
   const handleOpenQrModal = async () => {
@@ -254,73 +259,182 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         </section>
       )}
 
-      {/* ----------------- MENU PENGUMUMAN PENTING (DENGAN GAMBAR TAMPILAN ADMIN) ----------------- */}
-      {announcements.length > 0 && siteSettings.announcementsEnabled && (
-        <section className="bg-amber-50/70 border-b border-amber-200/80 py-6 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping"></span>
-                <h3 className="text-sm sm:text-base font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-600" />
-                  <span>Menu Pengumuman Penting</span>
-                </h3>
-              </div>
-              <span className="text-xs text-amber-800 font-semibold">
-                {announcements.length} Informasi Resmi
-              </span>
-            </div>
-
-            {/* Display Announcement Cards with Uploaded Image Preview */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {announcements.map((ann) => (
-                <div
-                  key={ann.id}
-                  onClick={() => setActiveAnnouncementModal(ann)}
-                  className="bg-white rounded-2xl border border-amber-200/80 hover:border-amber-400 p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col cursor-pointer group"
-                >
-                  {/* Uploaded Announcement Image Preview */}
-                  {ann.imageUrl ? (
-                    <div className="relative w-full h-44 rounded-xl overflow-hidden mb-3 bg-slate-100 border border-slate-200">
-                      <img
-                        src={ann.imageUrl}
-                        alt={ann.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                      <span className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-amber-600 text-white font-bold text-[10px] rounded-lg shadow-sm uppercase tracking-wider">
-                        Penting
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="w-full h-24 rounded-xl bg-gradient-to-r from-emerald-800 to-emerald-950 p-4 mb-3 flex items-center justify-center text-white text-center">
-                      <Sparkles className="w-6 h-6 text-amber-300 mb-1" />
-                    </div>
-                  )}
-
-                  <div className="flex-1 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-semibold text-slate-400 block mb-1">
-                        Dipublikasikan: {ann.publishDate}
-                      </span>
-                      <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-emerald-700 transition-colors line-clamp-2 mb-1.5 leading-snug">
-                        {ann.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
-                        {ann.content}
-                      </p>
-                    </div>
-
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-amber-800 group-hover:text-amber-900">
-                      <span>Lihat Rincian Pengumuman</span>
-                      <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" />
-                    </div>
+      {/* ----------------- DUAL SHOWCASE: MENU PENGUMUMAN PENTING & PRESTASI MADRASAH ----------------- */}
+      <section className="bg-gradient-to-b from-amber-50/70 via-emerald-50/20 to-slate-50/60 border-b border-amber-200/80 py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            
+            {/* ---------------- LEFT: MENU PENGUMUMAN PENTING ---------------- */}
+            <div className="bg-white/80 backdrop-blur-xs rounded-3xl border border-amber-200/90 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between pb-4 mb-5 border-b border-amber-100">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                  </span>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-extrabold text-amber-950 uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      <span>Menu Pengumuman Penting</span>
+                    </h3>
+                    <p className="text-[11px] text-amber-800/80">Informasi dan edaran resmi madrasah</p>
                   </div>
                 </div>
-              ))}
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                  {announcements.length} Informasi
+                </span>
+              </div>
+
+              {announcements.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
+                  Belum ada pengumuman penting baru yang diterbitkan.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {announcements.slice(0, 3).map((ann) => (
+                    <div
+                      key={ann.id}
+                      onClick={() => setActiveAnnouncementModal(ann)}
+                      className="bg-amber-50/30 hover:bg-amber-50/80 rounded-2xl border border-amber-200/70 hover:border-amber-400 p-3.5 transition-all duration-200 flex flex-col sm:flex-row gap-3.5 cursor-pointer group shadow-2xs hover:shadow-sm"
+                    >
+                      {/* Photo / Image Display */}
+                      {ann.imageUrl ? (
+                        <div className="relative w-full sm:w-36 h-32 sm:h-28 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-amber-200/60">
+                          <img
+                            src={ann.imageUrl}
+                            alt={ann.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <span className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-rose-600 text-white font-bold text-[9px] rounded-md shadow-xs uppercase">
+                            Penting
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="w-full sm:w-36 h-28 rounded-xl bg-gradient-to-br from-emerald-800 to-emerald-950 p-2 shrink-0 flex flex-col items-center justify-center text-white text-center">
+                          <Sparkles className="w-6 h-6 text-amber-300 mb-1" />
+                          <span className="text-[10px] font-bold text-amber-200">MA PLUS MM</span>
+                        </div>
+                      )}
+
+                      <div className="flex-1 flex flex-col justify-between min-w-0">
+                        <div>
+                          <span className="text-[10px] font-medium text-slate-400 block mb-1">
+                            {ann.publishDate}
+                          </span>
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-amber-900 transition-colors line-clamp-2 mb-1 leading-snug">
+                            {ann.title}
+                          </h4>
+                          <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
+                            {ann.content}
+                          </p>
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-amber-200/40 flex items-center justify-between text-[11px] font-bold text-amber-800 group-hover:text-amber-950">
+                          <span>Lihat Rincian Pengumuman</span>
+                          <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* ---------------- RIGHT: MENU PRESTASI MADRASAH (PHOTO & DESKRIPSI SINGKAT) ---------------- */}
+            <div className="bg-white/80 backdrop-blur-xs rounded-3xl border border-emerald-200/90 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between pb-4 mb-5 border-b border-emerald-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shadow-2xs shrink-0">
+                    <Trophy className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Prestasi Madrasah</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                        Unggulan
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-emerald-800 font-medium">Dokumentasi foto & piagam kejuaraan santri</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowAchievementModal(true)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition-colors shadow-2xs cursor-pointer"
+                  title="Daftarkan Prestasi Santri"
+                >
+                  <Award className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Daftarkan Prestasi</span>
+                </button>
+              </div>
+
+              {madrasahAchievements.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
+                  Belum ada prestasi madrasah yang dipublikasikan.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {madrasahAchievements.slice(0, 3).map((ach) => (
+                    <div
+                      key={ach.id}
+                      onClick={() => setActiveMadrasahAchievementModal(ach)}
+                      className="bg-emerald-50/20 hover:bg-emerald-50/70 rounded-2xl border border-emerald-200/70 hover:border-emerald-400 p-3.5 transition-all duration-200 flex flex-col sm:flex-row gap-3.5 cursor-pointer group shadow-2xs hover:shadow-sm"
+                    >
+                      {/* Photo Prestasi */}
+                      <div className="relative w-full sm:w-36 h-32 sm:h-28 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-emerald-200">
+                        <img
+                          src={ach.photoUrl}
+                          alt={ach.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute top-1.5 left-1.5">
+                          <span className="px-2 py-0.5 bg-amber-500/90 text-slate-950 font-bold text-[9px] rounded-md shadow-xs backdrop-blur-xs">
+                            {ach.category}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Deskripsi Singkat & Info */}
+                      <div className="flex-1 flex flex-col justify-between min-w-0">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-bold text-emerald-800 px-2 py-0.5 rounded-full bg-emerald-100/80">
+                              {ach.level}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              Tahun {ach.year}
+                            </span>
+                          </div>
+
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-emerald-800 transition-colors line-clamp-1 mb-1 leading-snug">
+                            {ach.title}
+                          </h4>
+
+                          {/* Deskripsi Singkat */}
+                          <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
+                            {ach.shortDescription}
+                          </p>
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-emerald-200/40 flex items-center justify-between text-[11px] font-bold text-emerald-800 group-hover:text-emerald-950">
+                          <span className="truncate max-w-[180px] font-medium text-slate-500">
+                            Peraih: <strong className="text-slate-800 font-semibold">{ach.recipient}</strong>
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-emerald-700 shrink-0">
+                            <span>Foto & Rincian</span>
+                            <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" />
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* ----------------- MAIN SERVICES CONTENT (ICON BERJEJER KOTAK) ----------------- */}
       <main id="services-section" className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
@@ -815,6 +929,79 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
               <button
                 onClick={() => setActiveAnnouncementModal(null)}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- PRESTASI MADRASAH PHOTO & DETAIL MODAL ----------------- */}
+      {activeMadrasahAchievementModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl relative border border-emerald-100 my-8 animate-in fade-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setActiveMadrasahAchievementModal(null)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] font-bold text-emerald-900 bg-emerald-100 px-3 py-1 rounded-full uppercase flex items-center gap-1.5">
+                <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                <span>{activeMadrasahAchievementModal.category}</span>
+              </span>
+              <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-3 py-1 rounded-full">
+                {activeMadrasahAchievementModal.level}
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Tahun {activeMadrasahAchievementModal.year}
+              </span>
+            </div>
+
+            <h3 className="font-extrabold text-base sm:text-xl text-slate-900 mb-2 leading-snug">
+              {activeMadrasahAchievementModal.title}
+            </h3>
+
+            {/* Large High-Res Photo Display */}
+            {activeMadrasahAchievementModal.photoUrl && (
+              <div className="rounded-2xl overflow-hidden mb-4 border border-emerald-200 shadow-sm relative group bg-slate-100">
+                <img
+                  src={activeMadrasahAchievementModal.photoUrl}
+                  alt={activeMadrasahAchievementModal.title}
+                  className="w-full h-auto max-h-80 object-cover"
+                />
+                <div className="absolute bottom-2 left-2 px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold">
+                  Dokumentasi Resmi Kejuaraan MA Plus MM
+                </div>
+              </div>
+            )}
+
+            {/* Recipient & Full Description */}
+            <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200 mb-4 text-xs">
+              <span className="text-[11px] text-emerald-800 font-semibold block mb-0.5">
+                Peraih Penghargaan:
+              </span>
+              <span className="text-sm font-bold text-slate-900">
+                {activeMadrasahAchievementModal.recipient}
+              </span>
+            </div>
+
+            <div className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line mb-6">
+              {activeMadrasahAchievementModal.shortDescription}
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600" />
+                <span>Prestasi Resmi Terdaftar</span>
+              </span>
+
+              <button
+                onClick={() => setActiveMadrasahAchievementModal(null)}
                 className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
               >
                 Tutup

@@ -14,6 +14,9 @@ import {
   changeInitialPassword,
   verifySession,
   logout,
+  getAuthStatus,
+  firstTimeAccess,
+  setupPersonalAccount,
 } from './auth';
 import {
   Category,
@@ -24,6 +27,7 @@ import {
   User,
   StudentAchievement,
   CommitteeContact,
+  MadrasahAchievement,
 } from '../src/types';
 import {
   generateUUID,
@@ -33,7 +37,7 @@ import {
 } from '../src/lib/crypto';
 import { getAllGasFiles } from './gasTemplates';
 import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../src/lib/brandAssets';
-import { DEFAULT_COMMITTEE_CONTACTS } from './db';
+import { DEFAULT_COMMITTEE_CONTACTS, DEFAULT_MADRASAH_ACHIEVEMENTS } from './db';
 
 export const apiRouter = express.Router();
 apiRouter.use(express.json({ limit: '15mb' }));
@@ -54,10 +58,11 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
     return;
   }
 
-  if (session.mustChangePassword && !req.path.includes('/change-initial-password')) {
+  if (session.mustChangePassword && !req.path.includes('/change-initial-password') && !req.path.includes('/setup-personal-account')) {
     res.status(403).json({
-      error: 'Anda diwajibkan mengganti password sementara sebelum dapat mengakses dashboard.',
+      error: 'Anda diwajibkan membuat akun administrator pribadi sebelum dapat mengakses dashboard.',
       mustChangePassword: true,
+      mustCreatePersonalAccount: true,
     });
     return;
   }
@@ -95,6 +100,10 @@ apiRouter.get('/public/portal', (req: Request, res: Response) => {
     .filter((d) => d.isActive)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+  const activeMadrasahAchievements = (db.MADRASAH_ACHIEVEMENTS || [])
+    .filter((a) => a.isActive)
+    .sort((a, b) => a.order - b.order);
+
   res.json({
     siteSettings: db.SITE_SETTINGS,
     categories: activeCategories,
@@ -104,6 +113,7 @@ apiRouter.get('/public/portal', (req: Request, res: Response) => {
     documents: activeDocuments,
     committeeContacts: db.COMMITTEE_CONTACTS || [],
     achievementsCount: db.STUDENT_ACHIEVEMENTS?.length || 0,
+    madrasahAchievements: activeMadrasahAchievements,
   });
 });
 
@@ -217,6 +227,71 @@ apiRouter.get('/public/qr-image', async (req: Request, res: Response) => {
 // ----------------------------------------------------
 // AUTH ENDPOINTS
 // ----------------------------------------------------
+
+/**
+ * Check if the custom administrator account has already been initialized
+ */
+apiRouter.get('/auth/status', (_req: Request, res: Response) => {
+  const status = getAuthStatus();
+  res.json(status);
+});
+
+/**
+ * 1-Click Instant First-Time Access:
+ * Allows entry to setup personal account without prior password
+ */
+apiRouter.post('/auth/first-time-access', (req: Request, res: Response) => {
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const result = firstTimeAccess(clientIp);
+
+  if (!result.success) {
+    res.status(403).json({ error: result.error });
+    return;
+  }
+
+  res.json(result);
+});
+
+/**
+ * Setup Personal Administrator User:
+ * Custom username, full name, email, and password.
+ * Locks the 1-click door permanently for privacy and security.
+ */
+apiRouter.post('/auth/setup-personal-account', (req: Request, res: Response) => {
+  const { newUsername, fullName, email, newPassword, confirmPassword } = req.body;
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+
+  let userId: string | undefined;
+  if (token) {
+    const session = verifySession(token);
+    if (session) {
+      userId = session.user.id;
+    }
+  }
+
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const result = setupPersonalAccount({
+    userId,
+    newUsername,
+    fullName,
+    email,
+    newPassword,
+    confirmPassword,
+    ip: clientIp,
+  });
+
+  if (!result.success) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  res.json({
+    success: true,
+    message: 'Akun administrator pribadi berhasil dibuat! Selamat datang di Dashboard.',
+    session: result.session,
+  });
+});
 
 apiRouter.post('/auth/login', (req: Request, res: Response) => {
   const { username, password } = req.body;
@@ -1324,6 +1399,93 @@ apiRouter.delete('/admin/achievements/:id', requireAuth, (req: Request, res: Res
   }
 
   const deleted = db.STUDENT_ACHIEVEMENTS.splice(index, 1)[0];
+  saveDatabase(db);
+  res.json({ success: true, deleted });
+});
+
+// ----------------------------------------------------
+// MADRASAH ACHIEVEMENTS (MENU KHUSUS PRESTASI MADRASAH)
+// ----------------------------------------------------
+apiRouter.get('/admin/madrasah-achievements', requireAuth, (_req: Request, res: Response) => {
+  const db = loadDatabase();
+  const list = (db.MADRASAH_ACHIEVEMENTS || []).sort((a, b) => a.order - b.order);
+  res.json(list);
+});
+
+apiRouter.post('/admin/madrasah-achievements', requireAuth, (req: Request, res: Response) => {
+  const {
+    title,
+    category = 'Prestasi',
+    level = 'Tingkat Nasional',
+    recipient = 'Santri / Tim MA PLUS MM',
+    year = '2026',
+    photoUrl = '',
+    shortDescription = '',
+    order = 1,
+    isActive = true,
+  } = req.body;
+
+  if (!title || !title.trim()) {
+    res.status(400).json({ error: 'Judul prestasi madrasah wajib diisi.' });
+    return;
+  }
+
+  const db = loadDatabase();
+  if (!db.MADRASAH_ACHIEVEMENTS) db.MADRASAH_ACHIEVEMENTS = [];
+
+  const newAch: MadrasahAchievement = {
+    id: generateUUID(),
+    title: title.trim(),
+    category: category.trim(),
+    level: level.trim(),
+    recipient: recipient.trim(),
+    year: String(year).trim(),
+    photoUrl: photoUrl.trim() || 'https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?auto=format&fit=crop&w=800&q=80',
+    shortDescription: (shortDescription || '').trim(),
+    order: Number(order) || (db.MADRASAH_ACHIEVEMENTS.length + 1),
+    isActive: Boolean(isActive),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  db.MADRASAH_ACHIEVEMENTS.push(newAch);
+  saveDatabase(db);
+  res.json({ success: true, achievement: newAch });
+});
+
+apiRouter.put('/admin/madrasah-achievements/:id', requireAuth, (req: Request, res: Response) => {
+  const { id } = req.params;
+  const db = loadDatabase();
+  if (!db.MADRASAH_ACHIEVEMENTS) db.MADRASAH_ACHIEVEMENTS = [];
+
+  const index = db.MADRASAH_ACHIEVEMENTS.findIndex((a) => a.id === id);
+  if (index === -1) {
+    res.status(404).json({ error: 'Prestasi madrasah tidak ditemukan.' });
+    return;
+  }
+
+  db.MADRASAH_ACHIEVEMENTS[index] = {
+    ...db.MADRASAH_ACHIEVEMENTS[index],
+    ...req.body,
+    updatedAt: new Date().toISOString(),
+  };
+
+  saveDatabase(db);
+  res.json({ success: true, achievement: db.MADRASAH_ACHIEVEMENTS[index] });
+});
+
+apiRouter.delete('/admin/madrasah-achievements/:id', requireAuth, (req: Request, res: Response) => {
+  const { id } = req.params;
+  const db = loadDatabase();
+  if (!db.MADRASAH_ACHIEVEMENTS) db.MADRASAH_ACHIEVEMENTS = [];
+
+  const index = db.MADRASAH_ACHIEVEMENTS.findIndex((a) => a.id === id);
+  if (index === -1) {
+    res.status(404).json({ error: 'Prestasi madrasah tidak ditemukan.' });
+    return;
+  }
+
+  const deleted = db.MADRASAH_ACHIEVEMENTS.splice(index, 1)[0];
   saveDatabase(db);
   res.json({ success: true, deleted });
 });

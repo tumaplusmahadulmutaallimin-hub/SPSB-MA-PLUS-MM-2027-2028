@@ -17,6 +17,7 @@ import {
   SystemConfig,
   BackupLog,
   SetupCredentials,
+  MadrasahAchievement,
 } from '../src/types';
 import {
   generateSalt,
@@ -107,6 +108,65 @@ export const DEFAULT_COMMITTEE_CONTACTS = [
     whatsappNumber: '+6281234567894',
     notes: 'Informasi fasilitas asrama, tata tertib, dan program kepondokan',
     isAvailable: true,
+  },
+];
+
+export const DEFAULT_MADRASAH_ACHIEVEMENTS: MadrasahAchievement[] = [
+  {
+    id: 'ach-madrasah-1',
+    title: 'Juara 1 Nasional Madrasah Robotics Competition (MRC)',
+    category: 'Robotik & Sains',
+    level: 'Tingkat Nasional',
+    recipient: 'Tim Robotik Santri MA Plus MM',
+    year: '2026',
+    photoUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80',
+    shortDescription: 'Meraih Juara 1 Nasional kategori Mobile Robot & IoT Innovation mengalahkan ratusan madrasah se-Indonesia.',
+    order: 1,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'ach-madrasah-2',
+    title: 'Juara Umum Musabaqah Hifdzil Qur\'an (MHQ) 30 Juz & Tafsir',
+    category: 'Tahfidz Al-Qur\'an',
+    level: 'Tingkat Provinsi Jawa Timur',
+    recipient: 'Kafilah Santri Tahfidz MA Plus MM',
+    year: '2026',
+    photoUrl: 'https://images.unsplash.com/photo-1609599006353-e629aaabfeae?auto=format&fit=crop&w=800&q=80',
+    shortDescription: 'Memperoleh predikat Juara Umum dengan tajwid mutqin, kefasihan makhraj, dan pemahaman tafsir Al-Qur\'an terbaik.',
+    order: 2,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'ach-madrasah-3',
+    title: 'Medali Emas KSM Bidang Matematika & Fisika Terintegrasi',
+    category: 'Kompetisi Sains Madrasah',
+    level: 'Tingkat Provinsi Jawa Timur',
+    recipient: 'Santri Berprestasi MA Plus MM',
+    year: '2025/2026',
+    photoUrl: 'https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?auto=format&fit=crop&w=800&q=80',
+    shortDescription: 'Meraih medali emas pada integrasi sains modern dengan khazanah nilai-nilai dan dalil Al-Qur\'an.',
+    order: 3,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'ach-madrasah-4',
+    title: 'Juara 1 Pidato & Debat Bahasa Arab Pesantren Se-Indonesia',
+    category: 'Bahasa & Literasi',
+    level: 'Tingkat Nasional',
+    recipient: 'Klub Bahasa Arab MA Plus MM',
+    year: '2025',
+    photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80',
+    shortDescription: 'Juara 1 dalam penguasaan tata bahasa fushah, retorika dakwah, dan argumentasi ilmiah antar madrasah plus.',
+    order: 4,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   },
 ];
 
@@ -240,6 +300,9 @@ export function initializeDatabase(): { db: DatabaseSchema; setupCredentials: Se
       sessionTimeoutHours: 8,
     },
     BACKUP_LOGS: [],
+    STUDENT_ACHIEVEMENTS: [],
+    COMMITTEE_CONTACTS: [...DEFAULT_COMMITTEE_CONTACTS],
+    MADRASAH_ACHIEVEMENTS: [...DEFAULT_MADRASAH_ACHIEVEMENTS],
   };
 
   // Generate initial administrator account automatically
@@ -291,6 +354,7 @@ export function migrateDatabase(db: Partial<DatabaseSchema>): DatabaseSchema {
     BACKUP_LOGS: Array.isArray(db.BACKUP_LOGS) ? db.BACKUP_LOGS : [],
     STUDENT_ACHIEVEMENTS: Array.isArray(db.STUDENT_ACHIEVEMENTS) ? db.STUDENT_ACHIEVEMENTS : [],
     COMMITTEE_CONTACTS: Array.isArray(db.COMMITTEE_CONTACTS) && db.COMMITTEE_CONTACTS.length > 0 ? db.COMMITTEE_CONTACTS : DEFAULT_COMMITTEE_CONTACTS,
+    MADRASAH_ACHIEVEMENTS: Array.isArray(db.MADRASAH_ACHIEVEMENTS) && db.MADRASAH_ACHIEVEMENTS.length > 0 ? db.MADRASAH_ACHIEVEMENTS : DEFAULT_MADRASAH_ACHIEVEMENTS,
   };
 
   // If no admin user exists, create one

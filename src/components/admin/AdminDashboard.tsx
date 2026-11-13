@@ -37,6 +37,7 @@ import {
   CheckCircle2,
   XCircle,
   Eye,
+  Trophy,
 } from 'lucide-react';
 import {
   AuthSession,
@@ -51,6 +52,7 @@ import {
   BackupLog,
   StudentAchievement,
   CommitteeContact,
+  MadrasahAchievement,
 } from '../../types';
 import { IconRenderer, AVAILABLE_LUCIDE_ICONS } from '../common/IconRenderer';
 import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../../lib/brandAssets';
@@ -107,6 +109,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [achievements, setAchievements] = useState<StudentAchievement[]>([]);
   const [committeeContacts, setCommitteeContacts] = useState<CommitteeContact[]>([]);
+  const [madrasahAchievements, setMadrasahAchievements] = useState<MadrasahAchievement[]>([]);
+  const [achievementSubTab, setAchievementSubTab] = useState<'madrasah' | 'student'>('madrasah');
 
   // Modals & form editing states
   const [editingCategory, setEditingCategory] = useState<Partial<Category> | null>(null);
@@ -115,6 +119,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingRegistration, setEditingRegistration] = useState<Partial<Registration> | null>(null);
   const [editingDocument, setEditingDocument] = useState<Partial<DocumentItem> | null>(null);
   const [editingContact, setEditingContact] = useState<Partial<CommitteeContact> | null>(null);
+  const [editingMadrasahAchievement, setEditingMadrasahAchievement] = useState<Partial<MadrasahAchievement> | null>(null);
   const [selectedAchievementCert, setSelectedAchievementCert] = useState<StudentAchievement | null>(null);
   const [newUserForm, setNewUserForm] = useState({ username: '', fullName: '', email: '', password: '', role: 'operator' });
   const [showNewUserModal, setShowNewUserModal] = useState(false);
@@ -166,6 +171,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         fetch('/api/admin/backups', { headers: authHeaders }),
         fetch('/api/admin/achievements', { headers: authHeaders }),
         fetch('/api/admin/committee-contacts', { headers: authHeaders }),
+        fetch('/api/admin/madrasah-achievements', { headers: authHeaders }),
       ]);
 
       if (dashRes.ok) setDashboardStats(await dashRes.json());
@@ -181,6 +187,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (backupsRes.ok) setBackupLogs(await backupsRes.json());
       if (achRes.ok) setAchievements(await achRes.json());
       if (contactsRes.ok) setCommitteeContacts(await contactsRes.json());
+      if (madrasahAchRes.ok) setMadrasahAchievements(await madrasahAchRes.json());
     } catch (err: any) {
       console.error('Failed to load admin data:', err);
       showNotification('error', 'Gagal memuat sebagian data.');

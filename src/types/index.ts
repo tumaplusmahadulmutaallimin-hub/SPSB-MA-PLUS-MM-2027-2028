@@ -173,6 +173,7 @@ export interface SystemConfig {
   lastBackupAt: string | null;
   maxLoginAttempts: number;
   sessionTimeoutHours: number;
+  hasCustomAdminCreated?: boolean;
 }
 
 export interface BackupLog {
@@ -212,6 +213,21 @@ export interface CommitteeContact {
   isAvailable: boolean;
 }
 
+export interface MadrasahAchievement {
+  id: string;
+  title: string;
+  category: string;
+  level: string;
+  recipient: string;
+  year: string;
+  photoUrl: string;
+  shortDescription: string;
+  order: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DatabaseSchema {
   USERS: User[];
   ROLES: Role[];
@@ -229,6 +245,7 @@ export interface DatabaseSchema {
   BACKUP_LOGS: BackupLog[];
   STUDENT_ACHIEVEMENTS?: StudentAchievement[];
   COMMITTEE_CONTACTS?: CommitteeContact[];
+  MADRASAH_ACHIEVEMENTS?: MadrasahAchievement[];
 }
 
 export interface AuthSession {
@@ -239,6 +256,7 @@ export interface AuthSession {
     fullName: string;
     role: string;
     mustChangePassword: boolean;
+    mustCreatePersonalAccount?: boolean;
   };
   expiresAt: number;
 }
@@ -248,4 +266,10 @@ export interface SetupCredentials {
   temporaryPassword: string;
   role: string;
   note: string;
+}
+
+export interface AuthStatus {
+  hasCustomAdminCreated: boolean;
+  isSetupMode: boolean;
+  currentAdminHint?: string;
 }

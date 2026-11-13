@@ -12,13 +12,14 @@ import {
   DocumentItem,
   SiteSettings,
   AuthSession,
-  SetupCredentials,
+  MadrasahAchievement,
 } from './types';
 import { PublicPortal } from './components/public/PublicPortal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { LoginModal } from './components/admin/LoginModal';
-import { ChangePasswordModal } from './components/admin/ChangePasswordModal';
-import { ShieldAlert, Copy, Check, Lock, X } from 'lucide-react';
+import { SetupPersonalAccountModal } from './components/admin/SetupPersonalAccountModal';
+import { Lock, X, Sparkles, ArrowRight } from 'lucide-react';
+import { AuthStatus } from './types';
 
 const SESSION_STORAGE_KEY = 'PORTAL_AUTH_SESSION_V1';
 
@@ -26,9 +27,9 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'public' | 'admin'>('public');
   const [session, setSession] = useState<AuthSession | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
-  const [initialCredentials, setInitialCredentials] = useState<SetupCredentials | null>(null);
-  const [copiedCreds, setCopiedCreds] = useState(false);
+  const [showSetupAccountModal, setShowSetupAccountModal] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [dismissBanner, setDismissBanner] = useState(false);
 
   // Public portal data
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
@@ -38,6 +39,7 @@ export default function App() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [committeeContacts, setCommitteeContacts] = useState<any[]>([]);
+  const [madrasahAchievements, setMadrasahAchievements] = useState<MadrasahAchievement[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch public portal data
@@ -53,6 +55,7 @@ export default function App() {
         setRegistrations(data.registrations || []);
         setDocuments(data.documents || []);
         setCommitteeContacts(data.committeeContacts || []);
+        setMadrasahAchievements(data.madrasahAchievements || []);
       }
     } catch (err) {
       console.error('Failed to load public portal data:', err);
@@ -73,13 +76,11 @@ export default function App() {
       body: JSON.stringify({ visitorId, path: window.location.pathname }),
     }).catch(() => {});
 
-    // Check setup info (first time admin credentials)
-    fetch('/api/auth/setup-info')
+    // Check system auth status (whether personal admin has been set up)
+    fetch('/api/auth/status')
       .then((res) => res.json())
-      .then((data) => {
-        if (data.credentials && !data.credentials.temporaryPassword.startsWith('***')) {
-          setInitialCredentials(data.credentials);
-        }
+      .then((data: AuthStatus) => {
+        setAuthStatus(data);
       })
       .catch(() => {});
 
@@ -98,7 +99,7 @@ export default function App() {
               if (data.user) {
                 setSession(parsed);
                 if (data.user.mustChangePassword) {
-                  setShowChangePasswordModal(true);
+                  setShowSetupAccountModal(true);
                 }
               } else {
                 localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -118,24 +119,50 @@ export default function App() {
     loadPublicData();
   }, []);
 
-  // Handle successful login
+  // Handle successful standard login
   const handleLoginSuccess = (newSession: AuthSession, mustChangePassword: boolean) => {
     setSession(newSession);
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
 
     if (mustChangePassword) {
-      setShowChangePasswordModal(true);
+      setShowSetupAccountModal(true);
     } else {
       setCurrentView('admin');
     }
   };
 
-  // Handle password changed
-  const handlePasswordChanged = (updatedSession: AuthSession) => {
+  // Handle 1-click first-time access
+  const handleFirstTimeAccess = (newSession: AuthSession) => {
+    setSession(newSession);
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
+    setShowLoginModal(false);
+    setShowSetupAccountModal(true);
+  };
+
+  // Direct 1-click first-time access from banner
+  const handleBannerFirstTimeClick = async () => {
+    try {
+      const res = await fetch('/api/auth/first-time-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        handleFirstTimeAccess(data.session);
+      } else {
+        setShowLoginModal(true);
+      }
+    } catch {
+      setShowLoginModal(true);
+    }
+  };
+
+  // Handle account created & secured
+  const handleAccountCreated = (updatedSession: AuthSession) => {
     setSession(updatedSession);
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updatedSession));
-    setShowChangePasswordModal(false);
-    setInitialCredentials(null);
+    setShowSetupAccountModal(false);
+    setAuthStatus({ hasCustomAdminCreated: true, isSetupMode: false });
     setCurrentView('admin');
   };
 
@@ -180,15 +207,6 @@ export default function App() {
     window.open(doc.fileUrl, '_blank');
   };
 
-  // Copy initial credentials
-  const handleCopyInitialCreds = () => {
-    if (!initialCredentials) return;
-    const text = `Kredensial Administrator Awal Portal Digital Terpadu\nUsername: ${initialCredentials.username}\nPassword Sementara: ${initialCredentials.temporaryPassword}`;
-    navigator.clipboard.writeText(text);
-    setCopiedCreds(true);
-    setTimeout(() => setCopiedCreds(false), 2500);
-  };
-
   if (loading && !siteSettings) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
@@ -200,50 +218,50 @@ export default function App() {
     );
   }
 
+  const isSetupMode = authStatus ? !authStatus.hasCustomAdminCreated : false;
+
   return (
     <div className="min-h-screen">
-      {/* ----------------- INITIAL SETUP CREDENTIALS BANNER ----------------- */}
-      {initialCredentials && (
-        <div className="bg-amber-500 text-slate-950 px-4 py-3 font-medium text-xs border-b border-amber-600 shadow-md">
+      {/* ----------------- FIRST-TIME 1-CLICK SETUP BANNER ----------------- */}
+      {isSetupMode && !dismissBanner && (
+        <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 text-white px-4 py-3 font-medium text-xs border-b border-emerald-600 shadow-md">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <ShieldAlert className="w-5 h-5 text-amber-950 shrink-0" />
+              <div className="w-8 h-8 rounded-lg bg-amber-400/20 border border-amber-300/40 flex items-center justify-center text-amber-300 shrink-0">
+                <Sparkles className="w-4 h-4 text-amber-300" />
+              </div>
               <div>
-                <p className="font-bold text-xs sm:text-sm">
-                  Kredensial Administrator Awal Dihasilkan Otomatis
+                <p className="font-bold text-xs sm:text-sm text-amber-200">
+                  Akses Masuk Administrator Pertama Kali (1-Klik)
                 </p>
-                <p className="text-[11px] text-amber-950/80">
-                  Username: <strong className="font-mono">{initialCredentials.username}</strong> | Password Sementara:{' '}
-                  <strong className="font-mono bg-amber-600/30 px-1.5 py-0.5 rounded text-slate-950">
-                    {initialCredentials.temporaryPassword}
-                  </strong>
+                <p className="text-[11px] text-emerald-100">
+                  Belum memiliki password? Masuk langsung 1-klik untuk membuat <strong>Username</strong> & <strong>Password Pribadi</strong> Anda sebelum membuka Dashboard.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={handleCopyInitialCreds}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                onClick={handleBannerFirstTimeClick}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-bold text-xs transition-all shadow-sm cursor-pointer"
               >
-                {copiedCreds ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedCreds ? 'Tersalin!' : 'Salin Kredensial'}</span>
+                <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                <span>1-Klik Masuk & Buat Akun</span>
+                <ArrowRight className="w-3.5 h-3.5 text-slate-950" />
               </button>
 
               <button
-                onClick={() => {
-                  setShowLoginModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-900 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
+                onClick={() => setShowLoginModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-950 text-white font-medium text-xs transition-colors cursor-pointer border border-emerald-600/60"
               >
                 <Lock className="w-3.5 h-3.5" />
-                <span>Login Sekarang</span>
+                <span>Login Manual</span>
               </button>
 
               <button
-                onClick={() => setInitialCredentials(null)}
-                className="p-1 text-amber-950 hover:text-black cursor-pointer"
-                title="Tutup Pesan"
+                onClick={() => setDismissBanner(true)}
+                className="p-1 text-emerald-300 hover:text-white cursor-pointer"
+                title="Tutup Notifikasi"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -299,7 +317,16 @@ export default function App() {
           registrations={registrations}
           documents={documents}
           committeeContacts={committeeContacts}
-          onOpenAdminLogin={() => setShowLoginModal(true)}
+          madrasahAchievements={madrasahAchievements}
+          onOpenAdminLogin={() => {
+            if (session && !session.user.mustChangePassword) {
+              setCurrentView('admin');
+            } else if (session && session.user.mustChangePassword) {
+              setShowSetupAccountModal(true);
+            } else {
+              setShowLoginModal(true);
+            }
+          }}
           onLinkClick={handleLinkClick}
           onDocumentDownload={handleDocumentDownload}
         />
@@ -310,21 +337,15 @@ export default function App() {
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
         onLoginSuccess={handleLoginSuccess}
-        initialCredentialsNote={
-          initialCredentials
-            ? {
-                username: initialCredentials.username,
-                tempPass: initialCredentials.temporaryPassword,
-              }
-            : null
-        }
+        onFirstTimeAccess={handleFirstTimeAccess}
       />
 
-      {/* ----------------- MANDATORY CHANGE PASSWORD MODAL ----------------- */}
-      <ChangePasswordModal
-        isOpen={showChangePasswordModal}
-        token={session?.token || ''}
-        onPasswordChanged={handlePasswordChanged}
+      {/* ----------------- MANDATORY SETUP PERSONAL ACCOUNT MODAL ----------------- */}
+      <SetupPersonalAccountModal
+        isOpen={showSetupAccountModal}
+        token={session?.token}
+        defaultUsername={session?.user?.username !== 'admin_portal' ? session?.user?.username : 'admin_maplusmm'}
+        onAccountCreated={handleAccountCreated}
       />
     </div>
   );

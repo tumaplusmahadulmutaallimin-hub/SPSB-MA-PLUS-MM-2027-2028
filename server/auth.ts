@@ -181,7 +181,7 @@ export function changeInitialPassword(
   };
 }
 
-export function verifySession(token: string): { user: User; mustChangePassword: boolean } | null {
+export function verifySession(token: string): { user: User; mustChangePassword: boolean; mustCreatePersonalAccount?: boolean } | null {
   if (!token) return null;
   const session = activeSessions.get(token);
   if (!session) return null;
@@ -199,12 +199,201 @@ export function verifySession(token: string): { user: User; mustChangePassword: 
     return null;
   }
 
+  const hasCustomAdminCreated = Boolean(db.SYSTEM_CONFIG?.hasCustomAdminCreated);
+  const mustCreate = !hasCustomAdminCreated || Boolean(freshUser.mustChangePassword);
+
   return {
     user: freshUser,
     mustChangePassword: freshUser.mustChangePassword,
+    mustCreatePersonalAccount: mustCreate,
   };
 }
 
 export function logout(token: string): boolean {
   return activeSessions.delete(token);
+}
+
+/**
+ * Returns whether a custom personal administrator account has been set up.
+ */
+export function getAuthStatus(): { hasCustomAdminCreated: boolean; isSetupMode: boolean; currentAdminHint?: string } {
+  const db = loadDatabase();
+  const superAdmin = db.USERS.find((u) => u.role === 'super_admin' && u.isActive);
+  const hasCustom = Boolean(db.SYSTEM_CONFIG?.hasCustomAdminCreated) && Boolean(superAdmin && !superAdmin.mustChangePassword);
+
+  return {
+    hasCustomAdminCreated: hasCustom,
+    isSetupMode: !hasCustom,
+    currentAdminHint: superAdmin ? superAdmin.username : undefined,
+  };
+}
+
+/**
+ * First-Time Instant Access:
+ * Allows a single 1-click entrance for initial setup BEFORE any personal user is created.
+ * Once personal user is created, this function permanently rejects further calls with 403 error.
+ */
+export function firstTimeAccess(ip = '127.0.0.1'): {
+  success: boolean;
+  session?: AuthSession;
+  error?: string;
+} {
+  const db = loadDatabase();
+  const superAdmin = db.USERS.find((u) => u.role === 'super_admin' && u.isActive);
+
+  if (!superAdmin) {
+    return {
+      success: false,
+      error: 'Pengguna administrator sistem tidak ditemukan.',
+    };
+  }
+
+  const hasCustom = Boolean(db.SYSTEM_CONFIG?.hasCustomAdminCreated) && !superAdmin.mustChangePassword;
+  if (hasCustom) {
+    return {
+      success: false,
+      error: 'Akses pertama kali telah ditutup secara permanen demi privasi & keamanan. Silakan login dengan Username dan Password pribadi Anda.',
+    };
+  }
+
+  // Generate a setup session that forces the user to create personal account before reaching dashboard
+  const token = generateSessionToken();
+  const now = Date.now();
+  const expiresAt = now + SESSION_TTL_MS;
+
+  activeSessions.set(token, { user: superAdmin, expiresAt });
+
+  addActivityLog(db, {
+    userId: superAdmin.id,
+    username: superAdmin.username,
+    action: 'FIRST_TIME_ACCESS_INITIATED',
+    details: `Akses 1-klik pertama kali dibuka dari IP ${ip}. Administrator diarahkan ke pembuatan akun pribadi.`,
+    ipAddress: ip,
+  });
+  saveDatabase(db);
+
+  return {
+    success: true,
+    session: {
+      token,
+      user: {
+        id: superAdmin.id,
+        username: superAdmin.username,
+        fullName: superAdmin.fullName,
+        role: superAdmin.role,
+        mustChangePassword: true,
+        mustCreatePersonalAccount: true,
+      },
+      expiresAt,
+    },
+  };
+}
+
+/**
+ * Setup Personal Administrator Account:
+ * Sets the real personal username, full name, email, and password.
+ * Marks mustChangePassword = false and hasCustomAdminCreated = true.
+ * Permanently locks the 1-click door.
+ */
+export function setupPersonalAccount(params: {
+  userId?: string;
+  newUsername: string;
+  fullName: string;
+  email: string;
+  newPassword: string;
+  confirmPassword: string;
+  ip?: string;
+}): { success: boolean; session?: AuthSession; error?: string } {
+  const { userId, newUsername, fullName, email, newPassword, confirmPassword, ip = '127.0.0.1' } = params;
+
+  const cleanUsername = (newUsername || '').trim();
+  const cleanFullName = (fullName || '').trim();
+  const cleanEmail = (email || '').trim();
+
+  if (cleanUsername.length < 3) {
+    return { success: false, error: 'Username minimal harus 3 karakter.' };
+  }
+
+  if (newPassword !== confirmPassword) {
+    return { success: false, error: 'Konfirmasi password baru tidak cocok.' };
+  }
+
+  if (newPassword.length < 6) {
+    return { success: false, error: 'Password minimal harus 6 karakter demi keamanan.' };
+  }
+
+  const db = loadDatabase();
+  let user: User | undefined;
+
+  if (userId) {
+    user = db.USERS.find((u) => u.id === userId && u.isActive);
+  }
+  if (!user) {
+    // If setup mode, find the super_admin
+    user = db.USERS.find((u) => u.role === 'super_admin' && u.isActive);
+  }
+
+  if (!user) {
+    return { success: false, error: 'Pengguna administrator tidak ditemukan.' };
+  }
+
+  // Check if newUsername is already used by another active user
+  const duplicate = db.USERS.find(
+    (u) => u.id !== user!.id && u.username.toLowerCase() === cleanUsername.toLowerCase() && u.isActive
+  );
+  if (duplicate) {
+    return { success: false, error: `Username "${cleanUsername}" sudah digunakan. Silakan pilih username lain.` };
+  }
+
+  // Hash new password
+  const newSalt = generateSalt();
+  const newHash = hashPasswordSync(newPassword, newSalt);
+
+  user.username = cleanUsername;
+  if (cleanFullName) user.fullName = cleanFullName;
+  if (cleanEmail) user.email = cleanEmail;
+  user.salt = newSalt;
+  user.passwordHash = newHash;
+  user.mustChangePassword = false;
+  user.updatedAt = new Date().toISOString();
+
+  // Mark system config as custom admin created
+  db.SYSTEM_CONFIG.hasCustomAdminCreated = true;
+
+  addActivityLog(db, {
+    userId: user.id,
+    username: user.username,
+    action: 'ADMIN_ACCOUNT_SETUP_COMPLETED',
+    details: `Akun administrator pribadi (${cleanUsername} - ${cleanFullName}) berhasil dibuat. Akses pertama kali 1-klik kini ditutup permanen.`,
+    ipAddress: ip,
+  });
+
+  saveDatabase(db);
+
+  // Invalidate old sessions and issue a fresh session
+  for (const [t, s] of activeSessions.entries()) {
+    if (s.user.id === user.id) {
+      activeSessions.delete(t);
+    }
+  }
+
+  const token = generateSessionToken();
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  activeSessions.set(token, { user, expiresAt });
+
+  return {
+    success: true,
+    session: {
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        mustChangePassword: false,
+        mustCreatePersonalAccount: false,
+      },
+      expiresAt,
+    },
+  };
 }
