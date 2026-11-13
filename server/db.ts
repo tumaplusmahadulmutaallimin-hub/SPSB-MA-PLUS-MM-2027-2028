@@ -25,6 +25,7 @@ import {
   generateTemporaryPassword,
   generateUUID,
 } from '../src/lib/crypto.js';
+import { OFFICIAL_BRAND_ASSETS, getSvgDataUrl } from '../src/lib/brandAssets.js';
 
 const BUNDLED_DATA_DIR = path.resolve(process.cwd(), 'data');
 const BUNDLED_DB_FILE = path.join(BUNDLED_DATA_DIR, 'db_portal_digital.json');
@@ -302,7 +303,219 @@ export function loadDatabase(): DatabaseSchema {
     return inMemoryDb;
   }
 
+  // If running in serverless read-only mode without traced data/db_portal_digital.json,
+  // initialize with the official MA PLUS MM portal seed so public portal & 1-click setup work out of the box.
+  if (!process.env.PORTAL_DB_FILE && isServerlessReadOnly()) {
+    const seeded = buildServerlessPortalSeed();
+    saveDatabase(seeded);
+    return seeded;
+  }
+
   return initializeDatabase().db;
+}
+
+function buildServerlessPortalSeed(): DatabaseSchema {
+  const now = new Date().toISOString();
+  const catPpdbId = '8daca99f-aead-4e41-a1f4-7bd6d6849a0d';
+  const catMediaId = '5a6049cd-068b-40fe-96f2-a14375070b42';
+  const catCampusId = '65715c20-273f-4dc5-a7d4-e0eefeae5240';
+
+  const seeded: DatabaseSchema = {
+    USERS: [],
+    ROLES: DEFAULT_ROLES,
+    CATEGORIES: [
+      {
+        id: catPpdbId,
+        name: 'Layanan PPDB & Pendaftaran',
+        description: 'Formulir pendaftaran santri baru dan portal prestasi',
+        icon: 'UserPlus',
+        order: 1,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: catMediaId,
+        name: 'Media Sosial & Penyiaran',
+        description: 'Saluran resmi informasi, kajian, dan kreasi santri',
+        icon: 'Share2',
+        order: 2,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: catCampusId,
+        name: 'Informasi & Layanan Kampus',
+        description: 'Website resmi, denah lokasi Google Maps, dan kontak panitia',
+        icon: 'School',
+        order: 3,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    LINKS: [
+      {
+        id: 'fe7c58b4-1eb1-480f-9b42-73d0e1584753',
+        name: OFFICIAL_BRAND_ASSETS.ppdb_form.name,
+        categoryId: catPpdbId,
+        description: OFFICIAL_BRAND_ASSETS.ppdb_form.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.ppdb_form.svgBadge),
+        targetUrl: '#ppdb-section',
+        targetOpen: '_self',
+        order: 1,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'f107447a-ca2d-4460-b83c-7536d8822721',
+        name: OFFICIAL_BRAND_ASSETS.instagram.name,
+        categoryId: catMediaId,
+        description: OFFICIAL_BRAND_ASSETS.instagram.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.instagram.svgBadge),
+        targetUrl: OFFICIAL_BRAND_ASSETS.instagram.defaultUrl,
+        targetOpen: '_blank',
+        order: 2,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: '1ccc7033-b20d-41ce-ae88-7bdd6b528296',
+        name: OFFICIAL_BRAND_ASSETS.youtube.name,
+        categoryId: catMediaId,
+        description: OFFICIAL_BRAND_ASSETS.youtube.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.youtube.svgBadge),
+        targetUrl: OFFICIAL_BRAND_ASSETS.youtube.defaultUrl,
+        targetOpen: '_blank',
+        order: 3,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: '352ce662-45bd-4140-8b9c-d5ff4553b5ad',
+        name: OFFICIAL_BRAND_ASSETS.tiktok.name,
+        categoryId: catMediaId,
+        description: OFFICIAL_BRAND_ASSETS.tiktok.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.tiktok.svgBadge),
+        targetUrl: OFFICIAL_BRAND_ASSETS.tiktok.defaultUrl,
+        targetOpen: '_blank',
+        order: 4,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: '6f94695f-4ac4-4dbf-8f85-1f98f57eeddf',
+        name: OFFICIAL_BRAND_ASSETS.google_maps.name,
+        categoryId: catCampusId,
+        description: OFFICIAL_BRAND_ASSETS.google_maps.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.google_maps.svgBadge),
+        targetUrl: OFFICIAL_BRAND_ASSETS.google_maps.defaultUrl,
+        targetOpen: '_blank',
+        order: 5,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: '6d05cd9d-f412-4149-be0f-c7159acba926',
+        name: OFFICIAL_BRAND_ASSETS.daftarkan_prestasi.name,
+        categoryId: catPpdbId,
+        description: OFFICIAL_BRAND_ASSETS.daftarkan_prestasi.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.daftarkan_prestasi.svgBadge),
+        targetUrl: '#daftarkan-prestasi',
+        targetOpen: '_self',
+        order: 6,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: '4ec63e06-ba25-412c-a386-cfa280068e23',
+        name: OFFICIAL_BRAND_ASSETS.portal_web.name,
+        categoryId: catCampusId,
+        description: OFFICIAL_BRAND_ASSETS.portal_web.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.portal_web.svgBadge),
+        targetUrl: OFFICIAL_BRAND_ASSETS.portal_web.defaultUrl,
+        targetOpen: '_blank',
+        order: 7,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: '8bf74318-23d1-4094-8fd8-93433203a1bd',
+        name: OFFICIAL_BRAND_ASSETS.saluran_whatsapp.name,
+        categoryId: catCampusId,
+        description: OFFICIAL_BRAND_ASSETS.saluran_whatsapp.description,
+        iconType: 'image',
+        icon: getSvgDataUrl(OFFICIAL_BRAND_ASSETS.saluran_whatsapp.svgBadge),
+        targetUrl: '#hubungi-panitia',
+        targetOpen: '_self',
+        order: 8,
+        isActive: true,
+        clicksCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    REGISTRATIONS: [],
+    ANNOUNCEMENTS: [
+      {
+        id: '0a68a4fa-5f5a-4453-9f92-e5bf6799096d',
+        title: 'Pengumuman Penting: Pembukaan PPDB & Seleksi Beasiswa Jalur Prestasi MA Plus MM',
+        content:
+          "Telah dibuka Penerimaan Peserta Didik & Santri Baru (PPDB) MA Plus Ma'hadul Muta'allimin Tahun Ajaran 2026/2027. Bagi calon santri yang telah mendaftar sebelumnya dan memiliki piagam/sertifikat kejuaraan dapat mengunggah berkas pendukung pada menu Daftarkan Prestasi.",
+        imageUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=1000&auto=format&fit=crop',
+        publishDate: now.split('T')[0],
+        status: 'published',
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    DOCUMENTS: [],
+    SITE_SETTINGS: { ...DEFAULT_SITE_SETTINGS },
+    QR_SETTINGS: { ...DEFAULT_QR_SETTINGS },
+    VISITORS: [],
+    LINK_CLICKS: [],
+    ACTIVITY_LOGS: [],
+    SYSTEM_CONFIG: {
+      version: '1.0.0',
+      appName: 'Portal Digital Terpadu',
+      databaseName: 'DB_PORTAL_DIGITAL',
+      installationCompleted: true,
+      installedAt: now,
+      lastBackupAt: null,
+      maxLoginAttempts: 5,
+      sessionTimeoutHours: 8,
+      hasCustomAdminCreated: false,
+    },
+    BACKUP_LOGS: [],
+    STUDENT_ACHIEVEMENTS: [],
+    COMMITTEE_CONTACTS: [...DEFAULT_COMMITTEE_CONTACTS],
+    MADRASAH_ACHIEVEMENTS: [...DEFAULT_MADRASAH_ACHIEVEMENTS],
+  };
+
+  createInitialAdmin(seeded);
+  return seeded;
 }
 
 /**
