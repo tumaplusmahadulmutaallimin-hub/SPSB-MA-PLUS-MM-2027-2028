@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { User, AuthSession } from '../src/types';
 import {
   loadDatabase,
@@ -8,12 +9,12 @@ import {
   verifyPassword,
   hashPasswordSync,
   generateSalt,
-  generateSessionToken,
   validatePasswordStrength,
 } from '../src/lib/crypto';
 
-// In-memory sessions table with TTL
+// In-memory sessions cache & revoked token list
 const activeSessions = new Map<string, { user: User; expiresAt: number }>();
+const revokedTokens = new Set<string>();
 
 // Rate-limiting tracking: IP/Username -> { attempts: number, lockedUntil: number }
 const loginAttempts = new Map<string, { attempts: number; lockedUntil: number }>();
@@ -21,6 +22,60 @@ const loginAttempts = new Map<string, { attempts: number; lockedUntil: number }>
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+function getSessionSecret(): string {
+  return process.env.SESSION_SECRET || 'portal_digital_terpadu_ma_plus_mm_secret_key_2026';
+}
+
+interface SignedTokenPayload {
+  userId: string;
+  username: string;
+  fullName: string;
+  role: string;
+  mustChangePassword: boolean;
+  expiresAt: number;
+  nonce: string;
+}
+
+function createSignedSessionToken(user: User, expiresAt: number, forceMustChange?: boolean): string {
+  const payload: SignedTokenPayload = {
+    userId: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+    mustChangePassword: forceMustChange !== undefined ? forceMustChange : Boolean(user.mustChangePassword),
+    expiresAt,
+    nonce: crypto.randomBytes(8).toString('hex'),
+  };
+  const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', getSessionSecret()).update(data).digest('base64url');
+  return `${data}.${sig}`;
+}
+
+function verifySignedSessionToken(token: string): SignedTokenPayload | null {
+  if (!token || !token.includes('.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  if (!data || !sig) return null;
+
+  const expectedSig = crypto.createHmac('sha256', getSessionSecret()).update(data).digest('base64url');
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8')) as SignedTokenPayload;
+    if (!payload.userId || !payload.expiresAt || Date.now() > payload.expiresAt) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 export function login(
   username: string,
@@ -77,9 +132,9 @@ export function login(
   });
   saveDatabase(db);
 
-  // Generate session token
-  const token = generateSessionToken();
+  // Generate stateless HMAC-signed session token
   const expiresAt = now + SESSION_TTL_MS;
+  const token = createSignedSessionToken(user, expiresAt);
   activeSessions.set(token, { user, expiresAt });
 
   return {
@@ -161,8 +216,8 @@ export function changeInitialPassword(
     }
   }
 
-  const token = generateSessionToken();
   const expiresAt = Date.now() + SESSION_TTL_MS;
+  const token = createSignedSessionToken(user, expiresAt, false);
   activeSessions.set(token, { user, expiresAt });
 
   return {
@@ -182,18 +237,30 @@ export function changeInitialPassword(
 }
 
 export function verifySession(token: string): { user: User; mustChangePassword: boolean; mustCreatePersonalAccount?: boolean } | null {
-  if (!token) return null;
-  const session = activeSessions.get(token);
-  if (!session) return null;
+  if (!token || revokedTokens.has(token)) return null;
 
-  if (Date.now() > session.expiresAt) {
+  let userId: string | null = null;
+  let expiresAt = 0;
+
+  const signedPayload = verifySignedSessionToken(token);
+  if (signedPayload) {
+    userId = signedPayload.userId;
+    expiresAt = signedPayload.expiresAt;
+  } else {
+    const session = activeSessions.get(token);
+    if (!session) return null;
+    userId = session.user.id;
+    expiresAt = session.expiresAt;
+  }
+
+  if (!userId || Date.now() > expiresAt) {
     activeSessions.delete(token);
     return null;
   }
 
   // Ensure user still exists and is active in database
   const db = loadDatabase();
-  const freshUser = db.USERS.find((u) => u.id === session.user.id && u.isActive);
+  const freshUser = db.USERS.find((u) => u.id === userId && u.isActive);
   if (!freshUser) {
     activeSessions.delete(token);
     return null;
@@ -210,7 +277,13 @@ export function verifySession(token: string): { user: User; mustChangePassword: 
 }
 
 export function logout(token: string): boolean {
-  return activeSessions.delete(token);
+  if (!token) return false;
+  const existed = activeSessions.delete(token);
+  if (verifySignedSessionToken(token)) {
+    revokedTokens.add(token);
+    return true;
+  }
+  return existed;
 }
 
 /**
@@ -257,9 +330,9 @@ export function firstTimeAccess(ip = '127.0.0.1'): {
   }
 
   // Generate a setup session that forces the user to create personal account before reaching dashboard
-  const token = generateSessionToken();
   const now = Date.now();
   const expiresAt = now + SESSION_TTL_MS;
+  const token = createSignedSessionToken(superAdmin, expiresAt, true);
 
   activeSessions.set(token, { user: superAdmin, expiresAt });
 
@@ -377,8 +450,8 @@ export function setupPersonalAccount(params: {
     }
   }
 
-  const token = generateSessionToken();
   const expiresAt = Date.now() + SESSION_TTL_MS;
+  const token = createSignedSessionToken(user, expiresAt, false);
   activeSessions.set(token, { user, expiresAt });
 
   return {

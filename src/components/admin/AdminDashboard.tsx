@@ -157,6 +157,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         backupsRes,
         achRes,
         contactsRes,
+        madrasahAchRes,
       ] = await Promise.all([
         fetch('/api/admin/dashboard', { headers: authHeaders }),
         fetch('/api/admin/categories', { headers: authHeaders }),
@@ -475,6 +476,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         showNotification('success', 'Data prestasi berhasil dihapus.');
+        loadAllData();
+      }
+    } catch (err: any) {
+      showNotification('error', err.message);
+    }
+  };
+
+  // Save / Update Madrasah Achievement (Menu Khusus Beranda)
+  const handleSaveMadrasahAchievement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMadrasahAchievement?.title?.trim()) return;
+
+    try {
+      const isEdit = Boolean(editingMadrasahAchievement.id);
+      const url = isEdit
+        ? `/api/admin/madrasah-achievements/${editingMadrasahAchievement.id}`
+        : '/api/admin/madrasah-achievements';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: authHeaders,
+        body: JSON.stringify(editingMadrasahAchievement),
+      });
+
+      if (res.ok) {
+        showNotification(
+          'success',
+          `Prestasi Madrasah berhasil ${isEdit ? 'diperbarui' : 'ditambahkan'}.`
+        );
+        setEditingMadrasahAchievement(null);
+        loadAllData();
+      } else {
+        const data = await res.json();
+        showNotification('error', data.error || 'Gagal menyimpan prestasi madrasah.');
+      }
+    } catch (err: any) {
+      showNotification('error', err.message);
+    }
+  };
+
+  // Delete Madrasah Achievement
+  const handleDeleteMadrasahAchievement = async (id: string) => {
+    if (!window.confirm('Hapus prestasi madrasah ini dari halaman utama?')) return;
+    try {
+      const res = await fetch(`/api/admin/madrasah-achievements/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders,
+      });
+      if (res.ok) {
+        showNotification('success', 'Prestasi madrasah berhasil dihapus.');
         loadAllData();
       }
     } catch (err: any) {
@@ -1285,26 +1337,146 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
 
-          {/* TAB 6: STUDENT ACHIEVEMENTS MANAGEMENT */}
+          {/* TAB 6: PRESTASI MADRASAH & STUDENT ACHIEVEMENTS MANAGEMENT */}
           {activeTab === 'achievements' && (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Akademik & Pengajuan Prestasi Santri (MA PLUS MM)
+                    Prestasi Madrasah & Verifikasi Prestasi Santri (MA PLUS MM)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Verifikasi berkas sertifikat atau piagam prestasi yang diajukan oleh santri/calon santri terdaftar.
+                    Kelola galeri foto & deskripsi singkat Prestasi Madrasah (tampil di samping Pengumuman Penting) serta verifikasi pengajuan prestasi santri.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
-                    {achievements.filter((a) => a.status === 'pending').length} Menunggu Verifikasi
-                  </span>
+                  <button
+                    onClick={() =>
+                      setEditingMadrasahAchievement({
+                        title: '',
+                        category: 'Tahfidz & Sains',
+                        level: 'Tingkat Nasional',
+                        recipient: 'Santri MA PLUS MM',
+                        year: String(new Date().getFullYear()),
+                        photoUrl: '',
+                        shortDescription: '',
+                        order: madrasahAchievements.length + 1,
+                        isActive: true,
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Prestasi Madrasah</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Achievements Table */}
+              {/* Sub-tab switcher */}
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                <button
+                  onClick={() => setAchievementSubTab('madrasah')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    achievementSubTab === 'madrasah'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <Trophy className="w-4 h-4 text-amber-300" />
+                  <span>Galeri Prestasi Madrasah ({madrasahAchievements.length})</span>
+                </button>
+                <button
+                  onClick={() => setAchievementSubTab('student')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    achievementSubTab === 'student'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <Award className="w-4 h-4 text-amber-400" />
+                  <span>Verifikasi Pengajuan Santri ({achievements.length})</span>
+                  {achievements.filter((a) => a.status === 'pending').length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-extrabold">
+                      {achievements.filter((a) => a.status === 'pending').length} Baru
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* SUB-TAB 1: GALERI PRESTASI MADRASAH */}
+              {achievementSubTab === 'madrasah' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {madrasahAchievements.length === 0 ? (
+                    <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-12 text-center text-xs text-slate-400">
+                      Belum ada data foto prestasi madrasah. Klik &quot;Tambah Prestasi Madrasah&quot; untuk menambahkan.
+                    </div>
+                  ) : (
+                    madrasahAchievements.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col"
+                      >
+                        <div className="relative h-40 bg-slate-100 border-b border-slate-100">
+                          <img
+                            src={item.photoUrl}
+                            alt={item.title}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-bold shadow-xs">
+                              {item.category}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                item.isActive ? 'bg-emerald-700 text-white' : 'bg-slate-600 text-white'
+                              }`}
+                            >
+                              {item.isActive ? 'Aktif' : 'Disembunyikan'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-4 flex-1 flex flex-col justify-between text-xs">
+                          <div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                              <span className="font-semibold text-emerald-700">{item.level}</span>
+                              <span>Tahun {item.year}</span>
+                            </div>
+                            <h4 className="font-bold text-slate-900 line-clamp-2 mb-1">{item.title}</h4>
+                            <p className="text-[11px] text-slate-500 line-clamp-2 mb-2">{item.shortDescription}</p>
+                            <p className="text-[11px] text-slate-600">
+                              Peraih: <strong className="text-slate-900">{item.recipient}</strong>
+                            </p>
+                          </div>
+
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                            <span className="text-[10px] text-slate-400">Urutan #{item.order}</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => setEditingMadrasahAchievement(item)}
+                                className="p-1.5 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200 cursor-pointer"
+                                title="Edit Prestasi Madrasah"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMadrasahAchievement(item.id)}
+                                className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 cursor-pointer"
+                                title="Hapus Prestasi Madrasah"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* SUB-TAB 2: VERIFIKASI PRESTASI SANTRI */}
+              {achievementSubTab === 'student' && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
                 {achievements.length === 0 ? (
                   <div className="p-12 text-center text-xs text-slate-400">
@@ -1411,6 +1583,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 
@@ -2930,6 +3103,199 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- MODAL: ADD / EDIT MADRASAH ACHIEVEMENT ----------------- */}
+      {editingMadrasahAchievement && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative text-xs my-8">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-600" />
+                <h3 className="font-bold text-base text-slate-900">
+                  {editingMadrasahAchievement.id ? 'Edit Prestasi Madrasah' : 'Tambah Prestasi Madrasah Baru'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingMadrasahAchievement(null)}
+                className="text-slate-400 hover:text-slate-700 font-bold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMadrasahAchievement} className="space-y-4">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Judul Prestasi / Kejuaraan <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingMadrasahAchievement.title || ''}
+                  onChange={(e) =>
+                    setEditingMadrasahAchievement({ ...editingMadrasahAchievement, title: e.target.value })
+                  }
+                  placeholder="misal: Juara 1 Nasional Lomba Robotik Madrasah"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Kategori / Bidang</label>
+                  <input
+                    type="text"
+                    value={editingMadrasahAchievement.category || ''}
+                    onChange={(e) =>
+                      setEditingMadrasahAchievement({ ...editingMadrasahAchievement, category: e.target.value })
+                    }
+                    placeholder="Tahfidz / Sains / Bahasa"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Tingkat Kejuaraan</label>
+                  <input
+                    type="text"
+                    value={editingMadrasahAchievement.level || ''}
+                    onChange={(e) =>
+                      setEditingMadrasahAchievement({ ...editingMadrasahAchievement, level: e.target.value })
+                    }
+                    placeholder="Tingkat Nasional / Provinsi"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Nama Peraih / Tim</label>
+                  <input
+                    type="text"
+                    value={editingMadrasahAchievement.recipient || ''}
+                    onChange={(e) =>
+                      setEditingMadrasahAchievement({ ...editingMadrasahAchievement, recipient: e.target.value })
+                    }
+                    placeholder="Santri / Kafilah MA PLUS MM"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Tahun</label>
+                  <input
+                    type="text"
+                    value={editingMadrasahAchievement.year || ''}
+                    onChange={(e) =>
+                      setEditingMadrasahAchievement({ ...editingMadrasahAchievement, year: e.target.value })
+                    }
+                    placeholder="2026"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Foto Dokumentasi Prestasi (Unggah Gambar atau URL)
+                </label>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 3 * 1024 * 1024) {
+                        showNotification('error', 'Ukuran foto maksimal 3 MB.');
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setEditingMadrasahAchievement({
+                          ...editingMadrasahAchievement,
+                          photoUrl: reader.result as string,
+                        });
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-800 hover:file:bg-emerald-100 cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={editingMadrasahAchievement.photoUrl || ''}
+                    onChange={(e) =>
+                      setEditingMadrasahAchievement({ ...editingMadrasahAchievement, photoUrl: e.target.value })
+                    }
+                    placeholder="Atau tempel URL foto https://..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono text-[11px]"
+                  />
+                  {editingMadrasahAchievement.photoUrl && (
+                    <div className="h-32 rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                      <img
+                        src={editingMadrasahAchievement.photoUrl}
+                        alt="Preview Foto Prestasi"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Deskripsi Singkat Prestasi <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={editingMadrasahAchievement.shortDescription || ''}
+                  onChange={(e) =>
+                    setEditingMadrasahAchievement({
+                      ...editingMadrasahAchievement,
+                      shortDescription: e.target.value,
+                    })
+                  }
+                  placeholder="Jelaskan secara singkat capaian dan keunggulan prestasi ini..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingMadrasahAchievement.isActive !== false}
+                    onChange={(e) =>
+                      setEditingMadrasahAchievement({
+                        ...editingMadrasahAchievement,
+                        isActive: e.target.checked,
+                      })
+                    }
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-semibold text-slate-700">Tampilkan di Halaman Utama</span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingMadrasahAchievement(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-sm cursor-pointer"
+                  >
+                    Simpan Prestasi
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

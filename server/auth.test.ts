@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs';
+
+const tmpAuthDbFile = path.join(os.tmpdir(), `test_portal_auth_${Date.now()}.json`);
+process.env.PORTAL_DB_FILE = tmpAuthDbFile;
+
 import { initializeDatabase, loadDatabase } from './db';
 import {
   login,
@@ -10,6 +17,12 @@ import {
   firstTimeAccess,
   setupPersonalAccount,
 } from './auth';
+
+test.after(() => {
+  try {
+    if (fs.existsSync(tmpAuthDbFile)) fs.unlinkSync(tmpAuthDbFile);
+  } catch {}
+});
 
 test('auth: initial admin login detects mustChangePassword requirement', () => {
   const { setupCredentials } = initializeDatabase();

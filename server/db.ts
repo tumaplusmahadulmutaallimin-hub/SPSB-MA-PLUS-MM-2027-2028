@@ -26,11 +26,37 @@ import {
   generateUUID,
 } from '../src/lib/crypto';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-export function getDbFile(): string {
-  return process.env.PORTAL_DB_FILE || path.join(DATA_DIR, 'db_portal_digital.json');
+const BUNDLED_DATA_DIR = path.resolve(process.cwd(), 'data');
+const BUNDLED_DB_FILE = path.join(BUNDLED_DATA_DIR, 'db_portal_digital.json');
+
+function isServerlessReadOnly(): boolean {
+  if (process.env.PORTAL_DB_FILE) return false;
+  if (process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return true;
+  }
+  try {
+    if (!fs.existsSync(BUNDLED_DATA_DIR)) {
+      fs.mkdirSync(BUNDLED_DATA_DIR, { recursive: true });
+    }
+    fs.accessSync(BUNDLED_DATA_DIR, fs.constants.W_OK);
+    return false;
+  } catch {
+    return true;
+  }
 }
-const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+
+function getRuntimeDataDir(): string {
+  return isServerlessReadOnly() ? '/tmp/portal_digital_data' : BUNDLED_DATA_DIR;
+}
+
+export function getDbFile(): string {
+  if (process.env.PORTAL_DB_FILE) return process.env.PORTAL_DB_FILE;
+  return path.join(getRuntimeDataDir(), 'db_portal_digital.json');
+}
+
+function getBackupsDir(): string {
+  return path.join(getRuntimeDataDir(), 'backups');
+}
 
 // Memory lock for atomic operations (similar to Apps Script LockService)
 let lockAcquired = false;
@@ -212,41 +238,70 @@ let inMemoryDb: DatabaseSchema | null = null;
 let lastSetupCredentials: SetupCredentials | null = null;
 
 function ensureDirectories(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  const dbDir = path.dirname(getDbFile());
+  const backupsDir = getBackupsDir();
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
   }
-  if (!fs.existsSync(BACKUPS_DIR)) {
-    fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+  if (!fs.existsSync(backupsDir)) {
+    fs.mkdirSync(backupsDir, { recursive: true });
   }
 }
 
 /**
- * Atomically save database to JSON file
+ * Atomically save database to JSON file (with EROFS/serverless safety)
  */
 export function saveDatabase(data: DatabaseSchema): void {
-  ensureDirectories();
-  const dbFile = getDbFile();
-  const tempPath = `${dbFile}.tmp.${Date.now()}`;
-  fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tempPath, dbFile);
   inMemoryDb = data;
+  try {
+    ensureDirectories();
+    const dbFile = getDbFile();
+    const tempPath = `${dbFile}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tempPath, dbFile);
+  } catch (err) {
+    console.warn('Warning: could not persist database to disk, keeping in memory:', (err as Error)?.message);
+  }
 }
 
 /**
- * Load database from disk
+ * Load database from disk (or bundled seed in serverless environments)
  */
 export function loadDatabase(): DatabaseSchema {
-  ensureDirectories();
+  try {
+    ensureDirectories();
+  } catch {
+    // Ignore if directory creation fails
+  }
   const dbFile = getDbFile();
   if (fs.existsSync(dbFile)) {
     try {
       const content = fs.readFileSync(dbFile, 'utf8');
-      inMemoryDb = JSON.parse(content) as DatabaseSchema;
+      const parsed = JSON.parse(content) as DatabaseSchema;
+      inMemoryDb = migrateDatabase(parsed);
       return inMemoryDb;
     } catch (err) {
       console.error('Error loading db file, attempting migration/recovery:', err);
     }
   }
+
+  // On serverless (e.g. Vercel), copy bundled data/db_portal_digital.json into /tmp on first cold start
+  if (!process.env.PORTAL_DB_FILE && dbFile !== BUNDLED_DB_FILE && fs.existsSync(BUNDLED_DB_FILE)) {
+    try {
+      const content = fs.readFileSync(BUNDLED_DB_FILE, 'utf8');
+      const parsed = JSON.parse(content) as DatabaseSchema;
+      const migrated = migrateDatabase(parsed);
+      saveDatabase(migrated);
+      return migrated;
+    } catch (err) {
+      console.error('Error seeding runtime db from bundled file:', err);
+    }
+  }
+
+  if (inMemoryDb) {
+    return inMemoryDb;
+  }
+
   return initializeDatabase().db;
 }
 
@@ -254,13 +309,24 @@ export function loadDatabase(): DatabaseSchema {
  * Idempotent database initialization function
  */
 export function initializeDatabase(): { db: DatabaseSchema; setupCredentials: SetupCredentials | null } {
-  ensureDirectories();
+  try {
+    ensureDirectories();
+  } catch {
+    // Ignore if directory creation fails
+  }
 
   const dbFile = getDbFile();
   let existing: DatabaseSchema | null = null;
   if (fs.existsSync(dbFile)) {
     try {
       const raw = fs.readFileSync(dbFile, 'utf8');
+      existing = JSON.parse(raw);
+    } catch {
+      existing = null;
+    }
+  } else if (!process.env.PORTAL_DB_FILE && dbFile !== BUNDLED_DB_FILE && fs.existsSync(BUNDLED_DB_FILE)) {
+    try {
+      const raw = fs.readFileSync(BUNDLED_DB_FILE, 'utf8');
       existing = JSON.parse(raw);
     } catch {
       existing = null;
@@ -350,6 +416,7 @@ export function migrateDatabase(db: Partial<DatabaseSchema>): DatabaseSchema {
       lastBackupAt: db.SYSTEM_CONFIG?.lastBackupAt || null,
       maxLoginAttempts: db.SYSTEM_CONFIG?.maxLoginAttempts || 5,
       sessionTimeoutHours: db.SYSTEM_CONFIG?.sessionTimeoutHours || 8,
+      hasCustomAdminCreated: Boolean(db.SYSTEM_CONFIG?.hasCustomAdminCreated),
     },
     BACKUP_LOGS: Array.isArray(db.BACKUP_LOGS) ? db.BACKUP_LOGS : [],
     STUDENT_ACHIEVEMENTS: Array.isArray(db.STUDENT_ACHIEVEMENTS) ? db.STUDENT_ACHIEVEMENTS : [],
@@ -452,8 +519,9 @@ export function verifyDatabase(): { isValid: boolean; sheetsCount: number; table
 export function backupDatabase(createdBy = 'system', notes = 'Automated backup'): BackupLog {
   const db = loadDatabase();
   const timestamp = new Date().toISOString();
+  ensureDirectories();
   const fileName = `DB_PORTAL_DIGITAL_BACKUP_${Date.now()}.json`;
-  const backupFilePath = path.join(BACKUPS_DIR, fileName);
+  const backupFilePath = path.join(getBackupsDir(), fileName);
 
   const snapshot = JSON.stringify(db, null, 2);
   fs.writeFileSync(backupFilePath, snapshot, 'utf8');

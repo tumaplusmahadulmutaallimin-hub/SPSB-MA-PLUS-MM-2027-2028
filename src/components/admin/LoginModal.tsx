@@ -12,6 +12,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { AuthSession, AuthStatus } from '../../types';
+import { parseJsonSafe } from '../../lib/http';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -39,7 +40,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     if (isOpen) {
       setErrorMessage('');
       fetch('/api/auth/status')
-        .then((res) => res.json())
+        .then((res) => parseJsonSafe<AuthStatus>(res))
         .then((data: AuthStatus) => {
           setAuthStatus(data);
           if (data.currentAdminHint && !data.hasCustomAdminCreated) {
@@ -62,7 +63,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
 
       if (!res.ok || !data.success) {
         setErrorMessage(data.error || 'Gagal menggunakan akses pertama kali.');
@@ -91,7 +92,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
 
       if (!res.ok || !data.success) {
         setErrorMessage(data.error || 'Login gagal. Periksa username dan password Anda.');

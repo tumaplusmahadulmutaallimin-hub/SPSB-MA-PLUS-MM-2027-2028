@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AuthSession } from '../../types';
+import { parseJsonSafe } from '../../lib/http';
 
 interface SetupPersonalAccountModalProps {
   isOpen: boolean;
@@ -86,7 +87,7 @@ export const SetupPersonalAccountModal: React.FC<SetupPersonalAccountModalProps>
         }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
 
       if (!res.ok || !data.success) {
         setErrorMessage(data.error || 'Gagal menyimpan akun administrator pribadi.');
